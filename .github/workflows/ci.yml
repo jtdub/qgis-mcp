@@ -113,3 +113,24 @@ jobs:
           fi
           echo "Found:"
           echo "$added"
+
+  docs:
+    name: Documentation
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Poetry
+        run: pipx install poetry
+
+      - name: Install dependencies
+        run: poetry install --with docs
+
+      - name: Build the site
+        run: poetry run mkdocs build --strict

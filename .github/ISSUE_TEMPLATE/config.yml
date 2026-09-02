@@ -1,8 +1,8 @@
 blank_issues_enabled: true
 contact_links:
   - name: QGIS MCP tool reference
-    url: https://github.com/jtdub/qgis-mcp/blob/develop/tools.md
+    url: https://qgis-mcp.readthedocs.io/en/latest/user/tool_reference/
     about: Every tool, with its parameters and what it returns.
   - name: Contributing guide
-    url: https://github.com/jtdub/qgis-mcp/blob/develop/CONTRIBUTING.md
+    url: https://qgis-mcp.readthedocs.io/en/latest/dev/contributing/
     about: How to set up a development environment and run the tests.
