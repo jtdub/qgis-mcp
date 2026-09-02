@@ -20,7 +20,7 @@ poetry install --with dev
 Add the documentation dependencies when you work on the site:
 
 ```bash
-poetry install --with dev,docs
+poetry install --with dev --extras docs
 ```
 
 ## Link the plugin into QGIS

@@ -23,6 +23,13 @@ dependencies = [
     "anyio>=4.0",
 ]
 
+[project.optional-dependencies]
+docs = [
+    "mkdocs>=1.6",
+    "mkdocs-material>=9.5",
+    "mkdocstrings[python]>=0.26",
+]
+
 [project.urls]
 Documentation = "https://qgis-mcp.readthedocs.io/"
 Repository = "https://github.com/jtdub/qgis-mcp"
@@ -43,14 +50,6 @@ ruff = ">=0.8"
 pylint = ">=3.0"
 mypy = ">=1.10"
 towncrier = ">=23.6"
-
-[tool.poetry.group.docs]
-optional = true
-
-[tool.poetry.group.docs.dependencies]
-mkdocs = ">=1.6"
-mkdocs-material = ">=9.5"
-mkdocstrings = { version = ">=0.26", extras = ["python"] }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

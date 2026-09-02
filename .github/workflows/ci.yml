@@ -130,7 +130,7 @@ jobs:
         run: pipx install poetry
 
       - name: Install dependencies
-        run: poetry install --with docs
+        run: poetry install --extras docs
 
       - name: Build the site
         run: poetry run mkdocs build --strict

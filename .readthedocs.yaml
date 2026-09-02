@@ -6,15 +6,12 @@ build:
   tools:
     python: "3.12"
   jobs:
-    # This replaces the default install step, so poetry alone decides what is
-    # installed. `poetry env use python` binds poetry to the interpreter Read
-    # the Docs built. Without it, poetry installs into a cached environment of
-    # its own and the build finds no mkdocs at all.
+    # This replaces the default install step. The docs dependencies are a
+    # standard extra in pyproject.toml, so pip installs them with no help from
+    # poetry. Poetry never targets the interpreter Read the Docs builds, and
+    # installs into a cached environment of its own instead.
     install:
-      - python -m pip install poetry
-      - python -m poetry env use python
-      - python -m poetry install --with docs
-      - python -m pip list
+      - python -m pip install ".[docs]"
 
 mkdocs:
   configuration: mkdocs.yml
