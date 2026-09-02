@@ -36,7 +36,6 @@ def assert_one_command(conn, command, params=None):
     "func_name,command_type",
     [
         ("ping", "ping"),
-        ("get_qgis_info", "get_qgis_info"),
         ("get_project_info", "get_project_info"),
         ("list_layers", "list_layers"),
     ],
@@ -50,6 +49,16 @@ async def test_simple_tools(func_name, command_type, mock_ctx, mock_conn):
 
 
 # --- Group 2: Tools with required params only ---
+
+
+async def test_get_qgis_info_adds_the_server_version(mock_conn):
+    mock_conn.send_command.return_value = {"status": "success", "result": {"qgis_version": "3.34.8"}}
+
+    result = await mod.get_qgis_info()
+
+    assert_one_command(mock_conn, "get_qgis_info", {})
+    assert result["qgis_version"] == "3.34.8"
+    assert result["server_version"] == mod.__version__
 
 
 async def test_load_project(mock_ctx, mock_conn):

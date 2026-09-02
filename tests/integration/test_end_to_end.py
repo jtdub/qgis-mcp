@@ -87,9 +87,15 @@ class TestSchemaAgreement:
         async with mcp_session(bridge) as session:
             info = payload(await session.call_tool("get_qgis_info", {}))
 
-        assert info["qgis_version"]
-        assert info["profile_folder"]
+        assert set(info) == {
+            "qgis_version",
+            "profile_folder",
+            "plugins_count",
+            "plugin_version",
+            "server_version",
+        }
         assert isinstance(info["plugins_count"], int)
+        assert info["server_version"] == server_module.__version__
 
     async def test_list_layers_keeps_every_vector_key(self, bridge, cities):
         async with mcp_session(bridge) as session:

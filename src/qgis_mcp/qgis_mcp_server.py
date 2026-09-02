@@ -22,6 +22,7 @@ from mcp.server.fastmcp import Context, FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
+from qgis_mcp import __version__
 from qgis_mcp.models import (
     Extent,
     FeatureSample,
@@ -447,8 +448,14 @@ async def ping() -> PluginInfo:
 
 @mcp.tool(annotations=_annotate("Get QGIS Info", read_only=True, idempotent=True))
 async def get_qgis_info() -> QgisInfo:
-    """Get QGIS information"""
-    return await _run_as(QgisInfo, "get_qgis_info")
+    """Report the QGIS build, and the version of each side of the bridge.
+
+    The plugin reports QGIS and its own version. This server adds its own, so a
+    user can see which package answered.
+    """
+    info = await _run("get_qgis_info")
+    info["server_version"] = __version__
+    return cast(QgisInfo, info)
 
 
 @mcp.tool(annotations=_annotate("Load Project", destructive=True, idempotent=True, open_world=True))

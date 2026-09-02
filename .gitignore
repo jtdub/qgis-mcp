@@ -22,3 +22,6 @@ htmlcov/
 # Local Claude Code state
 .claude/
 .mcp.json
+
+# Poetry owns the lock file. uv recreates its own when a user runs the server.
+uv.lock
