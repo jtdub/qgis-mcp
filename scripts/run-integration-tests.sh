@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # Run the QGIS integration tests.
 #
+# `invoke integration` is the newer way in. It builds a container whose QGIS
+# matches CI, and runs the same suite there. This script stays for a local
+# QGIS, and for a machine with no docker.
+#
 # With no argument the script looks for a local QGIS and uses its Python.
 # Pass "docker" to run every layer inside the qgis/qgis container instead.
 # A local macOS QGIS ships Python 3.9, which is too old for the MCP package,

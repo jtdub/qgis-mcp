@@ -1,5 +1,55 @@
 # Development environment
 
+## The quickest way in
+
+`invoke` drives a Docker environment whose QGIS matches the one CI uses. You
+need only docker and Python.
+
+```bash
+pip install invoke        # or poetry install --extras dev
+invoke build              # build the image
+invoke tests              # lint, types, both suites
+```
+
+`invoke --list` shows every task. Copy `invoke.example.yml` to `invoke.yml` to
+change the QGIS version or the build platform. On an Apple Silicon machine keep
+`platform: "linux/amd64"`, because qgis/qgis publishes no arm64 image.
+
+### The two modes
+
+**Headless QGIS in a container.** The default. `invoke start` runs a QGIS with
+the plugin server listening, and an MCP server container beside it. This is what
+`invoke integration` uses.
+
+```bash
+invoke start
+invoke logs --service qgis --follow
+```
+
+**QGIS Desktop on this machine.** Run only the MCP server in a container, and
+point it at the QGIS you already have open. Start the server from the QGIS MCP
+dock, copy the token into `development/creds.env`, then add the host compose
+file to `invoke.yml`:
+
+```yaml
+---
+qgis_mcp:
+  compose_files:
+    - "docker-compose.base.yml"
+    - "docker-compose.host-qgis.yml"
+```
+
+### The token
+
+A container has no dock, so it cannot show you a generated token. The first
+`invoke` task writes `development/creds.env` with a fresh one. Both services
+read it. The file is ignored by git.
+
+### Running on this machine instead
+
+Set `local: true` in `invoke.yml`, or `INVOKE_QGIS_MCP_LOCAL=1`. Every task then
+runs here, with no container.
+
 ## What you need
 
 - QGIS 3.34 LTR or newer
@@ -14,13 +64,13 @@ develop; it is one way a user runs the published server.
 ```bash
 git clone git@github.com:jtdub/qgis-mcp.git
 cd qgis-mcp
-poetry install --with dev
+poetry install --extras dev
 ```
 
 Add the documentation dependencies when you work on the site:
 
 ```bash
-poetry install --with dev --extras docs
+poetry install --all-extras
 ```
 
 ## Link the plugin into QGIS

@@ -27,7 +27,7 @@ jobs:
         run: pipx install poetry
 
       - name: Install dependencies
-        run: poetry install --with dev
+        run: poetry install --extras dev
 
       - name: Run tests
         run: poetry run pytest -v --tb=short
@@ -55,7 +55,7 @@ jobs:
         run: poetry check --lock
 
       - name: Install dependencies
-        run: poetry install --with dev
+        run: poetry install --extras dev
 
       - name: Ruff check
         run: poetry run ruff check .

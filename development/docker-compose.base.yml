@@ -1,0 +1,37 @@
+---
+services:
+  qgis:
+    build:
+      context: ..
+      dockerfile: development/Dockerfile
+      platforms:
+        - "${QGIS_PLATFORM:-linux/amd64}"
+      args:
+        QGIS_VER: "${QGIS_VER:-ltr}"
+    image: "qgis-mcp/qgis:${QGIS_VER:-ltr}"
+    platform: "${QGIS_PLATFORM:-linux/amd64}"
+    env_file:
+      - development.env
+      - creds.env
+    command: ["python3", "development/entrypoint_headless.py"]
+    ports:
+      - "9876:9876"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import socket; socket.create_connection(('127.0.0.1', 9876), 5)"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  mcp:
+    image: "qgis-mcp/qgis:${QGIS_VER:-ltr}"
+    platform: "${QGIS_PLATFORM:-linux/amd64}"
+    depends_on:
+      qgis:
+        condition: service_healthy
+    env_file:
+      - development.env
+      - creds.env
+    environment:
+      QGIS_MCP_HOST: qgis
+    command: ["qgis-mcp"]
+    stdin_open: true

@@ -28,3 +28,7 @@ uv.lock
 
 # MkDocs build output
 site/
+
+# Local invoke configuration and container credentials
+invoke.yml
+development/creds.env

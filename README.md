@@ -175,7 +175,7 @@ Once the config file has been set on Claude, and the server is running on QGIS, 
 Poetry manages the dependencies and owns the version.
 
 ```bash
-poetry install --with dev    # install all dependencies including test/lint tools
+poetry install --extras dev    # install all dependencies including test/lint tools
 ```
 
 ### Testing

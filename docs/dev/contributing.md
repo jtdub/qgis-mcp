@@ -30,7 +30,7 @@ This project connects [QGIS](https://qgis.org/) to [Claude AI](https://claude.ai
 
 3. **Install Dependencies**
    ```bash
-   poetry install --with dev
+   poetry install --extras dev
    ```
 
 4. **Set Up the QGIS Plugin**
