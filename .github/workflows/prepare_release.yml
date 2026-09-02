@@ -90,10 +90,9 @@ jobs:
       - name: Regenerate the lock file
         run: poetry lock
 
-      # A pull request opened with GITHUB_TOKEN starts no workflow run, so the
-      # release pull request carries no checks of its own. Run them here, before
-      # anything is pushed. A failure then leaves no branch, no pull request, and
-      # no draft release to clean up.
+      # The release pull request runs the normal CI as well. These run first,
+      # before anything is pushed, so a failure leaves no branch, no pull
+      # request, and no draft release to clean up.
       - name: Lint and types
         run: |
           poetry run ruff check .
