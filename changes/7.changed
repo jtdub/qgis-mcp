@@ -1,0 +1,2 @@
+Prepare Release now runs the lint, the types, and both test suites before it opens the release pull request.
+A `Publish to TestPyPI` workflow proves the whole publish chain before the first real release.

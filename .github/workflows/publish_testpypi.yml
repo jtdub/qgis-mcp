@@ -1,0 +1,78 @@
+---
+name: Publish to TestPyPI
+
+# A dry run of the release publish, against an index that does not matter.
+#
+# It proves the build, the version checks, the plugin zip, and Trusted
+# Publishing. It creates no tag, attaches nothing to a GitHub release, and
+# never touches main.
+#
+# A version cannot be reused on TestPyPI either. Bump the version on a branch
+# if a run has already claimed the current one.
+
+on:
+  workflow_dispatch:
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  build:
+    name: Build the package and the plugin
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Poetry
+        run: pipx install poetry
+
+      - name: Build the package
+        run: poetry build
+
+      - name: Check the plugin version matches
+        run: |
+          VERSION="$(poetry version --short)"
+          grep -q "^version=${VERSION}$" qgis_mcp_plugin/metadata.txt
+          grep -q "^PLUGIN_VERSION = \"${VERSION}\"$" qgis_mcp_plugin/qgis_mcp_plugin.py
+
+      - name: Build the QGIS plugin zip
+        run: |
+          VERSION="$(poetry version --short)"
+          zip -r "dist/qgis_mcp_plugin-${VERSION}.zip" qgis_mcp_plugin \
+            -x '*__pycache__*' '*.pyc'
+          unzip -l "dist/qgis_mcp_plugin-${VERSION}.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: testpypi-distfiles
+          path: dist/
+          if-no-files-found: error
+
+  publish-testpypi:
+    name: Publish to TestPyPI
+    runs-on: ubuntu-latest
+    needs: build
+    environment: testpypi
+    permissions:
+      # Trusted Publishing needs this. No API token is stored.
+      id-token: write
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: testpypi-distfiles
+          path: dist/
+
+      - name: Remove the plugin zip
+        run: rm -f dist/*.zip
+
+      - name: Publish
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
