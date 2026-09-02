@@ -6,12 +6,13 @@ build:
   tools:
     python: "3.12"
   jobs:
-    # This replaces the default install step. Read the Docs otherwise runs its
-    # own `pip install --upgrade mkdocs` first, which lands a different mkdocs
-    # than the lock file pins, and the theme then fails to register.
+    # This replaces the default install step, so poetry alone decides what is
+    # installed. `poetry env use python` binds poetry to the interpreter Read
+    # the Docs built. Without it, poetry installs into a cached environment of
+    # its own and the build finds no mkdocs at all.
     install:
       - python -m pip install poetry
-      - python -m poetry config virtualenvs.create false
+      - python -m poetry env use python
       - python -m poetry install --with docs
       - python -m pip list
 
