@@ -152,6 +152,22 @@ All coordinate I/O uses **WGS84 (EPSG:4326)**. Use `_resolve_layer()` for layer 
 - Update docs if behavior changes.
 - Be cautious when using `execute_code` (it runs arbitrary PyQGIS).
 
+## AI Assisted Contributions
+
+Much of this project was written with an AI assistant. That is allowed, and it
+is expected. Two rules matter most:
+
+- **Say so in the pull request**, and say which part.
+- **You own every line.** "The model wrote it" is not an answer in review.
+
+One failure costs this project more than any other: an assistant will invent a
+PyQGIS method that does not exist, and neither `mypy`, `pylint`, nor the unit
+suite can catch it. Only the QGIS API documentation and the integration suite
+can.
+
+Read [AI assisted contributions](ai_assisted_contributions.md) before you open
+a pull request written with one.
+
 ## Changelog Fragments
 
 `docs/admin/release_notes/` is built, not written. Add a file under `changes/`

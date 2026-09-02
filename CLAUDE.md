@@ -80,7 +80,27 @@ Every new tool requires changes in **BOTH** files:
 1. **Plugin:** add handler method + register in `handlers` dict inside `execute_command()`
 2. **MCP server:** add an `async @mcp.tool()` function. A read tool awaits `_run_as(Model, "my_tool", {params})`; a write tool awaits `_run_json("my_tool", {params})`
 3. For a read tool, add a `TypedDict` to `src/qgis_mcp/models.py` and annotate the return with it. Add `ctx: Context` only when the tool reports progress
-4. Update `docs/user/tool_reference.md` with parameters and return values, and the tool count in `tests/test_tool_annotations.py`
+4. **Tests:** a unit test in `tests/test_mcp_tools.py`, and an integration test in `tests/integration/test_handlers.py`. A handler with no integration test is a handler nobody has run
+5. Update `docs/user/tool_reference.md` with parameters and return values, and the tool count in `tests/test_tool_annotations.py`
+6. Add a fragment under `changes/`
+
+## Verify Every PyQGIS Call
+
+Nothing in the unit suite catches an invented PyQGIS method.
+
+- `mypy` cannot: PyQGIS is untyped here.
+- `pylint` cannot: `qgis.*` is in its ignored-modules list.
+- The unit suite cannot: `tests/test_plugin_helpers.py` replaces `qgis.*` with
+  mocks that answer any attribute.
+
+Check every PyQGIS call against the [QGIS 3.34 API documentation](https://qgis.org/pyqgis/3.34/),
+and cover the handler with an integration test. Those are the only two things
+that catch it.
+
+The same applies to the MCP SDK. Check `FastMCP` behaviour against the installed
+package under `.venv`, not against memory.
+
+`docs/dev/ai_assisted_contributions.md` states this for a human contributor.
 
 ## Design Conventions
 

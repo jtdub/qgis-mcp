@@ -72,6 +72,7 @@ nav:
       - Contributing: dev/contributing.md
       - Development environment: dev/dev_environment.md
       - Adding a tool: dev/extending.md
+      - AI assisted contributions: dev/ai_assisted_contributions.md
       - Architecture decisions: dev/arch_decision.md
       - Licensing: dev/licensing.md
       - Changelog fragments: dev/changelog_fragments.md
