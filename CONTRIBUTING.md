@@ -176,6 +176,16 @@ GitHub fills the description from
 - Say in the Test plan how a reviewer confirms the change works.
 - Tick a checklist item only when it is done. Leave the rest unticked, and say why.
 
+## Releasing
+
+A release is driven by two workflows. Read
+[the release checklist](docs/dev/release_checklist.md) before you run either.
+
+- **Prepare Release** bumps the version, builds the notes from `changes/`, and
+  opens a release pull request.
+- **Release** runs when you publish the GitHub release. It builds the package
+  and the plugin zip, publishes to PyPI, and moves `main`.
+
 ## Reporting Issues
 
 Use [GitHub Issues](https://github.com/jtdub/qgis-mcp/issues). Pick the template
