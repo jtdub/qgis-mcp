@@ -14,4 +14,4 @@ experimental=False
 deprecated=False
 
 [about]
-about=This plugin starts a local socket server inside QGIS. The QGIS MCP server connects to it and exposes QGIS as Model Context Protocol tools. The server binds to 127.0.0.1 and needs a token. execute_code stays off until you allow it in the dock.
+about=Licensed under Apache-2.0. This plugin starts a local socket server inside QGIS. The QGIS MCP server connects to it and exposes QGIS as Model Context Protocol tools. The server binds to 127.0.0.1 and needs a token. execute_code stays off until you allow it in the dock.

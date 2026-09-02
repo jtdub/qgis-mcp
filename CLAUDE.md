@@ -99,7 +99,7 @@ Every new tool requires changes in **BOTH** files:
 The site is MkDocs, in `docs/`, with the navigation in `mkdocs.yml`.
 
 ```bash
-poetry install --with docs
+poetry install --extras docs
 poetry run mkdocs serve          # live reload
 poetry run mkdocs build --strict # the build CI runs
 ```

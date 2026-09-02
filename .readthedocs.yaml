@@ -6,11 +6,12 @@ build:
   tools:
     python: "3.12"
   jobs:
-    post_create_environment:
-      - pip install poetry
-      - poetry config virtualenvs.create false
-    post_install:
-      - poetry install --with docs
+    # This replaces the default install step. The docs dependencies are a
+    # standard extra in pyproject.toml, so pip installs them with no help from
+    # poetry. Poetry never targets the interpreter Read the Docs builds, and
+    # installs into a cached environment of its own instead.
+    install:
+      - python -m pip install ".[docs]"
 
 mkdocs:
   configuration: mkdocs.yml

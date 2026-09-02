@@ -73,6 +73,7 @@ nav:
       - Development environment: dev/dev_environment.md
       - Adding a tool: dev/extending.md
       - Architecture decisions: dev/arch_decision.md
+      - Licensing: dev/licensing.md
       - Changelog fragments: dev/changelog_fragments.md
       - Release checklist: dev/release_checklist.md
       - Code reference:
