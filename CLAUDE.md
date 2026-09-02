@@ -5,17 +5,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Build & Run Commands
 
 ```bash
-uv sync                    # install dependencies
-uv sync --extra dev        # install with dev/test dependencies
-uv run pytest              # run all tests
-uv run pytest tests/test_mcp_tools.py::test_ping  # run single test
-uv run pytest --cov=src/qgis_mcp --cov-report=term-missing  # coverage
-uv run ruff check .        # lint (includes isort import sorting via I rule)
-uv run ruff check --fix .  # auto-fix lint issues (import sorting, etc.)
-uv run ruff format --check .  # format check
-uv run ruff format .       # auto-format
-uv run pylint src/qgis_mcp/   # static analysis (MCP server only)
-uv run mypy src/qgis_mcp/     # type check (MCP server only)
+poetry install --with dev                    # install dependencies, including dev
+poetry run pytest                            # run all tests
+poetry run pytest tests/test_mcp_tools.py::test_ping   # run single test
+poetry run pytest --cov=src/qgis_mcp --cov-report=term-missing  # coverage
+poetry run ruff check .                      # lint (includes isort import sorting via I rule)
+poetry run ruff check --fix .                # auto-fix lint issues (import sorting, etc.)
+poetry run ruff format --check .             # format check
+poetry run ruff format .                     # auto-format
+poetry run pylint src/qgis_mcp/              # static analysis (MCP server only)
+poetry run mypy src/qgis_mcp/                # type check (MCP server only)
+poetry version patch                         # bump the version; poetry owns it
+poetry lock                                  # regenerate poetry.lock
 ```
 
 ### Linting pipeline order
@@ -34,7 +35,7 @@ Claude / Claude Code → MCP Server (FastMCP, stdio) ↔ TCP socket (localhost:9
 
 ### MCP Server (`src/qgis_mcp/qgis_mcp_server.py`)
 
-Runs as a separate Python process managed by `uv`. Contains:
+Runs as a separate Python process. Poetry builds it; a user starts it with `uv run` or the `qgis-mcp` console script. Contains:
 
 - **`QgisMCPServer`** class — TCP socket client. Newline-framed JSON, a request id on every command, reconnection, and timeout
 - **`get_qgis_connection()`** — module-level singleton managing a persistent connection
@@ -88,7 +89,7 @@ Every new tool requires changes in **BOTH** files:
 Two suites. Run them in **separate** pytest processes.
 
 ```bash
-uv run pytest                              # unit suite, no QGIS
+poetry run pytest                              # unit suite, no QGIS
 ./scripts/run-integration-tests.sh         # QGIS suite, local QGIS Python
 ./scripts/run-integration-tests.sh docker  # QGIS suite, every layer
 ```

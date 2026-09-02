@@ -15,22 +15,22 @@ This project connects [QGIS](https://qgis.org/) to [Claude AI](https://claude.ai
 2. **Install Prerequisites**
    - QGIS 3.34 LTR or newer
    - Python 3.10 or newer
-   - [uv](https://docs.astral.sh/uv/getting-started/installation/) package manager
+   - [Poetry](https://python-poetry.org/docs/#installation)
    - Claude Desktop or Claude Code
 
-   On Mac:
+   Install Poetry with the official installer:
    ```bash
-   brew install uv
+   curl -sSL https://install.python-poetry.org | python3 -
    ```
 
    On Windows Powershell:
-   ```bash
-   powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+   ```powershell
+   (Invoke-WebRequest -Uri https://install.python-poetry.org -UseBasicParsing).Content | py -
    ```
 
 3. **Install Dependencies**
    ```bash
-   uv sync --extra dev
+   poetry install --with dev
    ```
 
 4. **Set Up the QGIS Plugin**
@@ -79,19 +79,19 @@ This project connects [QGIS](https://qgis.org/) to [Claude AI](https://claude.ai
 Run the full test suite:
 
 ```bash
-uv run pytest
+poetry run pytest
 ```
 
 Run a single test:
 
 ```bash
-uv run pytest tests/test_mcp_tools.py::test_ping
+poetry run pytest tests/test_mcp_tools.py::test_ping
 ```
 
 Run with coverage:
 
 ```bash
-uv run pytest --cov=src/qgis_mcp --cov-report=term-missing
+poetry run pytest --cov=src/qgis_mcp --cov-report=term-missing
 ```
 
 Tests cover the MCP server side, and the parts of the plugin that do not call PyQGIS. `tests/test_plugin_helpers.py` imports the plugin with fake `qgis.*` modules, so command dispatch, authentication, and the `execute_code` gate are tested without QGIS. Handlers that call PyQGIS still need a running QGIS instance and are not part of the automated suite.
@@ -113,7 +113,7 @@ The suite has three layers:
   session. It proves the output schemas match what the handlers return.
 
 WARNING: The two suites cannot share one pytest process. `tests/test_plugin_helpers.py`
-installs fake `qgis.*` modules on import. Run `uv run pytest` and the script separately.
+installs fake `qgis.*` modules on import. Run `poetry run pytest` and the script separately.
 
 The end to end layer needs Python 3.10 or newer. A macOS QGIS bundle ships Python 3.9,
 so that layer skips locally and runs under docker.
@@ -125,10 +125,10 @@ If `qgis.core` cannot be imported, the integration directory collects nothing.
 Run the full linting pipeline in this order:
 
 ```bash
-uv run ruff check --fix .        # lint + auto-fix (includes import sorting)
-uv run ruff format .             # auto-format
-uv run pylint src/qgis_mcp/      # static analysis (MCP server only)
-uv run mypy src/qgis_mcp/        # type checking (MCP server only)
+poetry run ruff check --fix .        # lint + auto-fix (includes import sorting)
+poetry run ruff format .             # auto-format
+poetry run pylint src/qgis_mcp/      # static analysis (MCP server only)
+poetry run mypy src/qgis_mcp/        # type checking (MCP server only)
 ```
 
 Import sorting is handled by ruff's built-in isort rule (`I` in the ruff `select` list). There is no need for a separate `isort` installation.

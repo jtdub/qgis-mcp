@@ -518,3 +518,8 @@ class TestQgisInfo:
 
         assert info["qgis_version"]
         assert info["profile_folder"]
+
+    def test_get_qgis_info_reports_the_plugin_version(self, plugin):
+        from qgis_mcp_plugin.qgis_mcp_plugin import PLUGIN_VERSION
+
+        assert plugin.get_qgis_info()["plugin_version"] == PLUGIN_VERSION

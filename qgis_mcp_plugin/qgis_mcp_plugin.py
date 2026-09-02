@@ -629,11 +629,12 @@ class QgisMCPServer(QObject):
         }
 
     def get_qgis_info(self, **kwargs):
-        """Get basic QGIS information"""
+        """Report the QGIS build, and the version of this plugin"""
         return {
             "qgis_version": Qgis.version(),
             "profile_folder": QgsApplication.qgisSettingsDirPath(),
             "plugins_count": len(active_plugins),
+            "plugin_version": PLUGIN_VERSION,
         }
 
     def get_project_info(self, **kwargs):

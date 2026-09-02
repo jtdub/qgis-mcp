@@ -22,8 +22,8 @@
 - [ ] Both files changed for a new tool: the plugin handler and the MCP tool
 - [ ] `PROTOCOL_VERSION` bumped in both files, if the wire format changed
 - [ ] `tools.md` and the tool count in `tests/test_tool_annotations.py` updated
-- [ ] Unit tests: `uv run pytest`
+- [ ] Unit tests: `poetry run pytest`
 - [ ] Integration tests: `./scripts/run-integration-tests.sh`, or a reason none are needed
-- [ ] Lint and types: `uv run ruff check . && uv run mypy src/qgis_mcp/`
+- [ ] Lint and types: `poetry run ruff check . && poetry run mypy src/qgis_mcp/`
 - [ ] Documentation updates
 - [ ] AI assistance disclosed

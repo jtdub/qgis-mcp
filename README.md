@@ -31,21 +31,23 @@ The system consists of two main components:
 - QGIS 3.34 LTR or newer
 - Claude Desktop or Claude Code
 - Python 3.10 or newer
-- uv package manager:
+- [uv](https://docs.astral.sh/uv/getting-started/installation/), to run the server
 
-If you're on Mac, please install uv as
+Install uv on Mac:
 
 ```bash
 brew install uv
 ```
 
-On Windows Powershell
+On Windows Powershell:
 
 ```bash
 powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
 ```
 
-Otherwise installation instructions are on their website: [Install uv](https://docs.astral.sh/uv/getting-started/installation/)
+uv runs the server from your clone. You do not need it to develop.
+[Poetry](https://python-poetry.org/docs/#installation) builds the project and
+manages its dependencies, and the Development section below uses it.
 
 ### Download code
 
@@ -145,16 +147,18 @@ Once the config file has been set on Claude, and the server is running on QGIS, 
 
 ### Setup
 
+Poetry manages the dependencies and owns the version.
+
 ```bash
-uv sync --extra dev    # install all dependencies including test/lint tools
+poetry install --with dev    # install all dependencies including test/lint tools
 ```
 
 ### Testing
 
 ```bash
-uv run pytest                                              # run all tests
-uv run pytest tests/test_mcp_tools.py::test_ping           # run a single test
-uv run pytest --cov=src/qgis_mcp --cov-report=term-missing # coverage report
+poetry run pytest                                              # run all tests
+poetry run pytest tests/test_mcp_tools.py::test_ping           # run a single test
+poetry run pytest --cov=src/qgis_mcp --cov-report=term-missing # coverage report
 ```
 
 ### Linting
@@ -162,10 +166,10 @@ uv run pytest --cov=src/qgis_mcp --cov-report=term-missing # coverage report
 Run in this order:
 
 ```bash
-uv run ruff check --fix .        # lint + auto-fix (includes import sorting)
-uv run ruff format .             # auto-format
-uv run pylint src/qgis_mcp/      # static analysis
-uv run mypy src/qgis_mcp/        # type checking
+poetry run ruff check --fix .        # lint + auto-fix (includes import sorting)
+poetry run ruff format .             # auto-format
+poetry run pylint src/qgis_mcp/      # static analysis
+poetry run mypy src/qgis_mcp/        # type checking
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for full development guidelines.

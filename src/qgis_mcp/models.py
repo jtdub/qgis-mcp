@@ -20,11 +20,13 @@ class PluginInfo(TypedDict):
 
 
 class QgisInfo(TypedDict):
-    """The QGIS build the plugin runs inside."""
+    """The QGIS build the plugin runs inside, and the versions of both sides."""
 
     qgis_version: str
     profile_folder: str
     plugins_count: int
+    plugin_version: str
+    server_version: str
 
 
 class PixelSize(TypedDict):

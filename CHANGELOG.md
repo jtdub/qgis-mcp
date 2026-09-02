@@ -14,6 +14,8 @@ The plugin now listens on `127.0.0.1` only.
 `create_print_layout` takes `replace`. Without it, the tool refuses to overwrite a layout that already has that name.
 
 ### Changed
+`get_qgis_info` now reports the plugin version and the server version, so you can see which side is out of date.
+Poetry replaces uv for development. Install with `poetry install --with dev`, and run a command with `poetry run`. You still start the server with uv, and nothing changes in your client configuration.
 The repository is now `jtdub/qgis-mcp`, with a hyphen. GitHub redirects the old name, so an existing clone still works.
 Run the server with the new `qgis-mcp` command. Update your client configuration; the old file path still works.
 Copy the new plugin folder into your QGIS profile when you update the `qgis-mcp` package. The two now check that they speak the same protocol, and report a clear error when they do not.
