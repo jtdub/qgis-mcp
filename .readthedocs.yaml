@@ -6,13 +6,14 @@ build:
   tools:
     python: "3.12"
   jobs:
-    # Run poetry through the interpreter Read the Docs built, not through a
-    # bare `poetry` on PATH. A bare one installs into the global Python, and
-    # `python -m mkdocs` then cannot see the theme.
-    post_install:
+    # This replaces the default install step. Read the Docs otherwise runs its
+    # own `pip install --upgrade mkdocs` first, which lands a different mkdocs
+    # than the lock file pins, and the theme then fails to register.
+    install:
       - python -m pip install poetry
       - python -m poetry config virtualenvs.create false
       - python -m poetry install --with docs
+      - python -m pip list
 
 mkdocs:
   configuration: mkdocs.yml
