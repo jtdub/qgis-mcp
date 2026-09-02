@@ -8,17 +8,31 @@ user who updates one and not the other gets a clear error. Release them together
 
 Do these once, before the first release. A release fails without them.
 
-- [ ] Register the `qgis-mcp` name on [PyPI](https://pypi.org/).
+### First, seed `main`
+
+WARNING: The `advance-main` job fails on every release until this is done.
+`main` starts as an orphan branch with no history in common with `develop`, so a
+push that is not forced cannot succeed.
+
+```bash
+git push --force origin develop:main
+git merge-base origin/main origin/develop   # must now print a commit
+```
+
+One force push, once. Every release after that moves `main` on its own.
+
+### Then set up PyPI
+
+- [ ] Register the `qgis-mcp` name on [PyPI](https://pypi.org/), or use the
+      pending-publisher flow, which needs no project first.
 - [ ] Add a **Trusted Publisher** on PyPI for this repository. Set the workflow
       to `release.yml` and the environment to `pypi`. No API token is stored.
 - [ ] Create a GitHub environment named `pypi`. The `publish-pypi` job names it,
-      and the job holds the `id-token: write` permission that Trusted Publishing
-      needs.
-- [ ] Create a GitHub environment named `osgeo`. Leave it empty to skip the QGIS
-      Plugin Repository upload.
-- [ ] Seed `main` from `develop`, once. `main` starts as an orphan branch with
-      no shared history, so the `advance-main` job cannot move it until someone
-      does this by hand.
+      and PyPI matches on that exact name. The job holds the `id-token: write`
+      permission that Trusted Publishing needs.
+- [ ] Create a GitHub environment named `osgeo`. It must exist even when empty,
+      because the `publish-qgis-plugin` job names it. Leave it empty to skip the
+      QGIS Plugin Repository upload.
 
 To publish to the QGIS Plugin Repository as well:
 
@@ -27,6 +41,32 @@ To publish to the QGIS Plugin Repository as well:
 
 The upload step is skipped when `OSGEO_USERNAME` is empty, so the release still
 succeeds without an account.
+
+## Prove it on TestPyPI first
+
+WARNING: A version can never be reused on PyPI. A wrong first upload cannot be
+replaced; you bump and try again, and the wrong file stays public.
+
+Run the dry run before the first real release, and after any change to
+`release.yml`.
+
+- [ ] Create the project on [TestPyPI](https://test.pypi.org/), or use its
+      pending-publisher flow.
+- [ ] Add a Trusted Publisher there. Set the workflow to
+      `publish_testpypi.yml` and the environment to `testpypi`.
+- [ ] Create a GitHub environment named `testpypi`. Leave it with no secrets.
+- [ ] Run **Publish to TestPyPI** from the Actions tab.
+- [ ] Confirm the page at `https://test.pypi.org/project/qgis-mcp/`.
+- [ ] Confirm it installs and starts:
+
+      ```bash
+      pip install --index-url https://test.pypi.org/simple/ \
+        --extra-index-url https://pypi.org/simple/ qgis-mcp
+      qgis-mcp   # starts, reports it cannot reach QGIS, and exits
+      ```
+
+A TestPyPI version cannot be reused either. Bump the version on a branch if a
+run has already claimed the current one.
 
 ## Before you release
 
@@ -57,7 +97,14 @@ succeeds without an account.
    - creates a draft GitHub release for tag `v<version>`.
 
 2. Review the release pull request. Read the built notes as a user would.
-3. Merge it. CI must be green.
+
+    NOTE: The release pull request shows **no CI checks**. GitHub starts no
+    workflow run for a pull request opened with `GITHUB_TOKEN`. Prepare Release
+    runs the lint, the types, and both suites on the bumped commit before it
+    opens the pull request, so a failure stops the release before a pull request
+    exists.
+
+3. Merge it.
 
 ## Publish
 

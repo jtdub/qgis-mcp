@@ -90,6 +90,23 @@ jobs:
       - name: Regenerate the lock file
         run: poetry lock
 
+      # A pull request opened with GITHUB_TOKEN starts no workflow run, so the
+      # release pull request carries no checks of its own. Run them here, before
+      # anything is pushed. A failure then leaves no branch, no pull request, and
+      # no draft release to clean up.
+      - name: Lint and types
+        run: |
+          poetry run ruff check .
+          poetry run ruff format --check .
+          poetry run pylint src/qgis_mcp/
+          poetry run mypy src/qgis_mcp/
+
+      - name: Unit suite
+        run: poetry run pytest -q
+
+      - name: QGIS suite
+        run: ./scripts/run-integration-tests.sh docker
+
       - name: Open the release pull request
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
