@@ -145,13 +145,29 @@ All coordinate I/O uses **WGS84 (EPSG:4326)**. Use `_resolve_layer()` for layer 
 
 ## Contributing Guidelines
 
+- Open an issue before you file a pull request. This avoids work on a change we cannot accept.
 - Keep PRs focused on a single change.
 - Write clear commit messages.
 - Ensure tests pass and linters are clean before submitting.
 - Update docs if behavior changes.
 - Be cautious when using `execute_code` (it runs arbitrary PyQGIS).
 
+## Opening a Pull Request
+
+GitHub fills the description from
+[`.github/pull_request_template.md`](.github/pull_request_template.md).
+
+- Name the issue the change closes on the `# Closes:` line.
+- Say in the Test plan how a reviewer confirms the change works.
+- Tick a checklist item only when it is done. Leave the rest unticked, and say why.
+
 ## Reporting Issues
 
-- Use [GitHub Issues](https://github.com/jtdub/qgis-mcp/issues).
-- Include OS, QGIS version, and error logs where relevant.
+Use [GitHub Issues](https://github.com/jtdub/qgis-mcp/issues). Pick the template
+that fits:
+
+- **Bug report** asks for the QGIS version, the plugin version, the `qgis-mcp`
+  version, and the QGIS MCP log panel. QGIS MCP runs as two processes, so a
+  fault can sit in either one.
+- **Feature request** asks what you cannot do today, and what a new tool would
+  return.
