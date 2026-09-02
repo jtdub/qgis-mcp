@@ -65,7 +65,9 @@ You can get your profile folder in QGIS going to menu `Settings` -> `User profil
 
 and on macOS: `~/Library/Application\ Support/QGIS/QGIS3/profiles/default/python/plugins`
 
-Then close QGIS and open it again. Go to the menu option `Plugins` > `Installing and Managing Plugins`, select the `All` tab and search for "QGIS MCP", then mark the QGIS MCP checkbox.
+Then close QGIS and open it again. Go to the menu option `Plugins` > `Manage and Install Plugins`, select the **`Installed`** tab, and tick the QGIS MCP checkbox.
+
+> The `All` tab lists the official QGIS Plugin Repository. This plugin is not published there yet, so you will not find it in that tab.
 
 ### Claude for Desktop Integration
 
@@ -79,15 +81,50 @@ Go to `Claude` > `Settings` > `Developer` > `Edit Config` > `claude_desktop_conf
         "qgis": {
             "command": "uv",
             "args": [
-                "--directory",
-                "/ABSOLUTE/PATH/TO/qgis_mcp/src/qgis_mcp",
                 "run",
-                "qgis_mcp_server.py"
+                "--directory",
+                "/ABSOLUTE/PATH/TO/qgis_mcp",
+                "qgis-mcp"
             ]
         }
     }
 }
 ```
+
+Point `--directory` at the repository root, the folder that holds `pyproject.toml`.
+
+### Authentication
+
+The plugin generates a token each time you start the server, and it writes that token to a
+session file inside your QGIS profile. The MCP server finds the file by itself, so you
+normally do nothing.
+
+If the MCP server cannot find the file, copy the token from the dock widget and set it in
+the environment:
+
+```json
+{
+    "mcpServers": {
+        "qgis": {
+            "command": "uv",
+            "args": ["run", "--directory", "/ABSOLUTE/PATH/TO/qgis_mcp", "qgis-mcp"],
+            "env": { "QGIS_MCP_TOKEN": "the-token-from-the-dock" }
+        }
+    }
+}
+```
+
+These environment variables override the session file:
+
+| Variable | Purpose | Default |
+| --- | --- | --- |
+| `QGIS_MCP_TOKEN` | The token the plugin shows in the dock | from the session file |
+| `QGIS_MCP_HOST` | The host to connect to | `127.0.0.1` |
+| `QGIS_MCP_PORT` | The port the plugin listens on | `9876` |
+| `QGIS_MCP_SESSION_FILE` | An explicit path to the session file | the default QGIS profile |
+
+WARNING: `execute_code` runs unrestricted Python inside QGIS. It is disabled by default.
+Tick "Allow execute_code" in the dock widget only when you need it.
 
 ## Usage
 
@@ -154,7 +191,7 @@ See [tools.md](tools.md) for the full reference with parameters and return value
 ### Introspection
 - `list_layers` — all layers with CRS, fields, geometry type, feature count
 - `get_layer_fields` — detailed field info (type, length, precision)
-- `get_unique_values` — unique values for a field
+- `get_unique_values` — one sorted page of the distinct values a field holds
 - `sample_features` — sample features with optional expression filter
 - `get_layer_extent` — bounding box in WGS84
 
@@ -177,7 +214,7 @@ See [tools.md](tools.md) for the full reference with parameters and return value
 - `export_layout` — export to PDF or image
 
 ### Utilities
-- `get_layer_features` — get vector features with limit
+- `get_layer_features` — one page of vector features
 - `execute_processing` — run QGIS Processing algorithms
 - `render_map` — render map canvas to image
 - `execute_code` — execute arbitrary PyQGIS code

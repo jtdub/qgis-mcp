@@ -2,6 +2,10 @@
 
 All coordinate inputs accept **WGS84 (EPSG:4326)**. All coordinate outputs are returned in **WGS84**.
 
+Every tool that names a layer accepts a layer name or a layer id.
+
+A result that carries `has_more` is one page. Read the next page with `offset`.
+
 ---
 
 ## Project Management
@@ -44,12 +48,12 @@ Add a raster layer (GeoTIFF, etc.).
 - **Parameters:** `path` (str), `name` (str, optional), `provider` (str, default `"gdal"`)
 
 ### `remove_layer`
-Remove a layer by ID.
-- **Parameters:** `layer_id` (str)
+Remove a layer.
+- **Parameters:** `layer` (str — a layer name or a layer id)
 
 ### `zoom_to_layer`
 Zoom the map canvas to a layer's extent.
-- **Parameters:** `layer_id` (str)
+- **Parameters:** `layer` (str — a layer name or a layer id)
 
 ---
 
@@ -82,14 +86,14 @@ Get detailed field information for a vector layer.
 - **Returns:** Array of field objects with `name`, `type`, `length`, `precision`, `comment`
 
 ### `get_unique_values`
-Get unique values for a specific field.
-- **Parameters:** `layer_name` (str), `field_name` (str), `limit` (int, default 50)
-- **Returns:** Sorted array of unique values
+Read one sorted page of the distinct values a field holds.
+- **Parameters:** `layer_name` (str), `field_name` (str), `limit` (int, default 50), `offset` (int, default 0)
+- **Returns:** `values`, plus `total_count`, `returned_count`, `offset`, and `has_more`
 
 ### `sample_features`
 Sample features from a layer with optional expression filter.
-- **Parameters:** `layer_name` (str), `count` (int, default 5), `expression` (str, optional)
-- **Returns:** Array of feature dicts with attributes and truncated WKT geometry
+- **Parameters:** `layer_name` (str), `count` (int, default 5), `expression` (str, optional), `offset` (int, default 0)
+- **Returns:** `features` with attributes and truncated WKT geometry, plus `total_count`, `returned_count`, `offset`, and `has_more`
 
 ### `get_layer_extent`
 Get a layer's bounding box in WGS84.
@@ -146,11 +150,13 @@ Add labels to a layer.
 
 ### `create_print_layout`
 Create a print layout with map, scale bar, and north arrow.
-- **Parameters:** `name` (str), `page_size` (str, default `"A3"`), `orientation` (str, default `"landscape"`), `title` (str, optional)
+- **Parameters:** `name` (str), `page_size` (str, default `"A3"`), `orientation` (str, default `"landscape"`), `title` (str, optional), `replace` (bool, default false)
 - **Returns:** Layout dimensions
 
+WARNING: `replace` deletes the layout that already has this name. Without it, the tool reports an error instead.
+
 ### `add_legend`
-Add a legend to a print layout.
+Add a legend to a print layout. The legend links to the layout's main map item.
 - **Parameters:** `layout_name` (str), `title` (str, default `"Legend"`), `position` (list, default `[15, 30]`), `width` (float, default 45), `layers` (list, optional — filter to specific layer names), `background` (bool, default true)
 
 ### `add_inset_map`
@@ -166,13 +172,10 @@ Export a print layout to PDF or image.
 
 ## Utilities
 
-### `get_layers`
-Retrieve all layers in the current project (legacy, prefer `list_layers`).
-- **Parameters:** None
-
 ### `get_layer_features`
-Get features from a vector layer (legacy, prefer `sample_features`).
-- **Parameters:** `layer_id` (str), `limit` (int, default 10)
+Read one page of features from a vector layer. Use `sample_features` to filter.
+- **Parameters:** `layer` (str — a layer name or a layer id), `limit` (int, default 10), `offset` (int, default 0)
+- **Returns:** The same shape as `sample_features`
 
 ### `execute_processing`
 Run a QGIS Processing algorithm.
