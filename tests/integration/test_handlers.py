@@ -124,6 +124,25 @@ class TestSampleFeatures:
 
         assert [feature["id"] for feature in rest] == [feature["id"] for feature in first[2:]]
 
+    def test_a_filtered_page_counts_only_the_matching_features(self, plugin, cities):
+        page = plugin.sample_features("cities", count=1, expression='"pop" > 100000')
+
+        assert page["total_count"] == 4
+        assert page["returned_count"] == 1
+        assert page["has_more"] is True
+
+    def test_a_filtered_walk_ends_when_the_count_is_reached(self, plugin, cities):
+        seen = 0
+        offset = 0
+        while True:
+            page = plugin.sample_features("cities", count=2, offset=offset, expression='"pop" > 100000')
+            seen += page["returned_count"]
+            if not page["has_more"]:
+                break
+            offset += page["returned_count"]
+
+        assert seen == page["total_count"] == 4
+
     def test_a_null_attribute_comes_back_as_none(self, plugin, cities):
         names = [item["attributes"]["name"] for item in plugin.sample_features("cities", count=10)["features"]]
 
@@ -204,6 +223,17 @@ class TestTraceDownstream:
 
         assert result["start_segment_id"] == 30
         assert result["segments_traced"] == 2
+
+    def test_a_long_neighbour_does_not_beat_a_nearer_segment(self, plugin):
+        rows = [
+            ("LINESTRING(-72.0 -13.0, -72.0 -14.0)", [1, 0]),
+            ("LINESTRING(-71.999 -13.5, -71.998 -13.5)", [2, 0]),
+        ]
+        add_layer(build_layer("LineString?field=HYRIV_ID:integer&field=NEXT_DOWN:integer", "near", rows))
+
+        result = plugin.trace_downstream("near", -71.9985, -13.5, output_name="traced")
+
+        assert result["start_segment_id"] == 2
 
     def test_a_separate_network_is_not_followed(self, plugin, rivers):
         result = plugin.trace_downstream("rivers", -70.0, -15.0, output_name="traced")

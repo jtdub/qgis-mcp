@@ -84,7 +84,7 @@ class TestHandshake:
         mock_cls.return_value = server
 
         assert get_qgis_connection() is server
-        server.send_command.assert_called_once_with("ping")
+        server.send_command.assert_called_once_with("ping", timeout=server.HANDSHAKE_TIMEOUT)
 
     @patch("qgis_mcp.qgis_mcp_server.QgisMCPServer")
     def test_a_mismatched_protocol_raises_and_drops_the_connection(self, mock_cls):
@@ -108,3 +108,29 @@ class TestHandshake:
 
         assert get_qgis_connection() is server
         server.disconnect.assert_not_called()
+
+    @patch("qgis_mcp.qgis_mcp_server.QgisMCPServer")
+    def test_a_plugin_that_never_answers_names_the_upgrade(self, mock_cls):
+        server = MagicMock()
+        server.connect.return_value = True
+        server.send_command.side_effect = Exception("Timeout waiting for response to 'ping'.")
+        mock_cls.return_value = server
+
+        with pytest.raises(ToolError, match="did not answer the opening ping"):
+            get_qgis_connection()
+
+        server.disconnect.assert_called_once()
+
+    @patch("qgis_mcp.qgis_mcp_server.QgisMCPServer")
+    def test_a_reported_protocol_mismatch_is_surfaced(self, mock_cls):
+        server = MagicMock()
+        server.connect.return_value = True
+        server.send_command.return_value = {
+            "status": "error",
+            "code": "protocol_mismatch",
+            "message": "This plugin speaks protocol 2 and the client sent 1.",
+        }
+        mock_cls.return_value = server
+
+        with pytest.raises(ToolError, match="speaks protocol 2"):
+            get_qgis_connection()

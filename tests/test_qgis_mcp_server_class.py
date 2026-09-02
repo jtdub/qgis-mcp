@@ -133,11 +133,33 @@ class TestSendCommand:
         with pytest.raises(Exception, match="Timeout"):
             mock_qgis_server.send_command("ping")
 
-    def test_connection_closed_raises(self, mock_qgis_server):
+    @patch("qgis_mcp.qgis_mcp_server.socket.socket")
+    def test_a_closed_connection_reconnects_and_retries(self, mock_socket_class, mock_qgis_server):
+        response = {"status": "success", "result": {}}
         mock_qgis_server.socket.recv.return_value = b""
 
-        with pytest.raises(Exception, match="Connection closed"):
-            mock_qgis_server.send_command("ping")
+        new_sock = MagicMock()
+        new_sock.recv.return_value = _line(response)
+        mock_socket_class.return_value = new_sock
+
+        assert mock_qgis_server.send_command("ping") == response
+
+    def test_a_closed_connection_that_cannot_reconnect_raises(self, mock_qgis_server):
+        mock_qgis_server.socket.recv.return_value = b""
+
+        with patch("qgis_mcp.qgis_mcp_server.socket.socket") as mock_cls:
+            mock_cls.return_value.connect.side_effect = ConnectionRefusedError()
+            with pytest.raises(Exception, match="could not reconnect"):
+                mock_qgis_server.send_command("ping")
+
+    def test_an_oversized_response_closes_the_socket(self, mock_qgis_server):
+        mock_qgis_server.MAX_RESPONSE_BYTES = 32
+        mock_qgis_server.socket.recv.return_value = b"x" * 64
+
+        with pytest.raises(Exception, match="exceeded"):
+            mock_qgis_server._read_line("ping")
+
+        assert mock_qgis_server.socket is None
 
     def test_malformed_response_raises(self, mock_qgis_server):
         mock_qgis_server.socket.recv.return_value = b"not json\n"

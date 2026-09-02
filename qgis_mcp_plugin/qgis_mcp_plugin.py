@@ -133,6 +133,8 @@ class QgisMCPServer(QObject):
         self.timer = None
         self.answered = OrderedDict()
         self._last_pump = 0.0
+        self._published_session = False
+        self._polling = False
 
     def session_file_path(self):
         """Return the path of the file that publishes this server's token."""
@@ -170,6 +172,7 @@ class QgisMCPServer(QObject):
 
             try:
                 self._write_session_file()
+                self._published_session = True
             except OSError as e:
                 QgsMessageLog.logMessage(
                     f"Could not write the session file, so the client needs QGIS_MCP_TOKEN: {str(e)}",
@@ -202,14 +205,22 @@ class QgisMCPServer(QObject):
         self.socket = None
         self.client = None
         self.buffer = b""
-        self._remove_session_file()
+        if self._published_session:
+            self._remove_session_file()
+            self._published_session = False
         QgsMessageLog.logMessage("QGIS MCP server stopped", "QGIS MCP")
 
     def process_server(self):
-        """Process server operations (called by timer)"""
-        if not self.running:
+        """Process server operations (called by timer).
+
+        A handler that repaints the window lets Qt deliver the poll timer again.
+        The guard stops that nested call from touching the buffer or the client
+        while a handler is still running.
+        """
+        if not self.running or self._polling:
             return
 
+        self._polling = True
         try:
             # Accept new connections
             if not self.client and self.socket:
@@ -227,6 +238,8 @@ class QgisMCPServer(QObject):
 
         except Exception as e:
             QgsMessageLog.logMessage(f"Server error: {str(e)}", "QGIS MCP", Qgis.Critical)
+        finally:
+            self._polling = False
 
     def _drop_client(self, reason, level=None):
         """Close the current client connection and clear its buffer."""
@@ -303,10 +316,14 @@ class QgisMCPServer(QObject):
                 return
 
     def _token_is_valid(self, supplied):
-        """Return True if the supplied token matches this server's token."""
+        """Return True if the supplied token matches this server's token.
+
+        The comparison runs on bytes. compare_digest raises on a str that holds
+        a character outside ASCII.
+        """
         if not isinstance(supplied, str):
             return False
-        return hmac.compare_digest(supplied, self.token)
+        return hmac.compare_digest(supplied.encode("utf-8"), self.token.encode("utf-8"))
 
     def _stamp(self, request_id, payload):
         """Add the request id and the protocol version to a response."""
@@ -839,6 +856,17 @@ class QgisMCPServer(QObject):
             "values": page,
         }
 
+    def _count_matching(self, layer, expression):
+        """Return how many features an expression matches.
+
+        The count must describe the same set as has_more, or a caller that
+        compares the two pages for ever.
+        """
+        request = QgsFeatureRequest().setFilterExpression(expression)
+        request.setFlags(QgsFeatureRequest.NoGeometry)
+        request.setSubsetOfAttributes([])
+        return sum(1 for _ in layer.getFeatures(request))
+
     def _feature_page(self, layer, limit, offset, expression=None):
         """Return one page of features, with WGS84 WKT geometry."""
         limit, offset = self._page_bounds(limit, offset)
@@ -850,6 +878,7 @@ class QgisMCPServer(QObject):
                 raise Exception(f"Invalid expression: {expr.parserErrorString()}")
             request.setFilterExpression(expression)
 
+        total = self._count_matching(layer, expression) if expression else layer.featureCount()
         wgs84 = self._wgs84_crs()
         xform = self._transform(layer.crs(), wgs84)
         field_names = [field.name() for field in layer.fields()]
@@ -876,7 +905,7 @@ class QgisMCPServer(QObject):
 
         return {
             "layer_name": layer.name(),
-            "total_count": layer.featureCount(),
+            "total_count": total,
             "returned_count": len(features),
             "offset": offset,
             "has_more": has_more,
@@ -962,11 +991,31 @@ class QgisMCPServer(QObject):
             return feature
         return None
 
+    def _closest_within(self, layer, point, search):
+        """Return the feature closest to a point inside a square, or None.
+
+        The provider selects by bounding box, so the true distance decides the
+        winner among everything the box returns.
+        """
+        rect = QgsRectangle(point.x() - search, point.y() - search, point.x() + search, point.y() + search)
+        target = QgsGeometry.fromPointXY(point)
+        nearest = None
+        shortest = None
+        for feature in layer.getFeatures(QgsFeatureRequest().setFilterRect(rect)):
+            if not feature.hasGeometry():
+                continue
+            distance = feature.geometry().distance(target)
+            if shortest is None or distance < shortest:
+                shortest, nearest = distance, feature
+        return nearest
+
     def _nearest_feature(self, layer, point):
         """Return the feature closest to a point in the layer's own CRS.
 
-        The search starts in a small box around the point and doubles the box
-        until it finds a feature.
+        The search starts in a small box and doubles it until something is
+        found. It then searches one box wider, because a bounding box that
+        reaches the first box can belong to a feature that is further away than
+        one the first box missed.
 
         Raises:
             Exception: If no feature is found inside the whole layer extent.
@@ -974,20 +1023,11 @@ class QgisMCPServer(QObject):
         extent = layer.extent()
         reach = max(extent.width(), extent.height()) or 1.0
         search = reach / 500.0
-        target = QgsGeometry.fromPointXY(point)
 
-        while search <= reach * 2:
-            rect = QgsRectangle(point.x() - search, point.y() - search, point.x() + search, point.y() + search)
-            nearest = None
-            shortest = None
-            for feature in layer.getFeatures(QgsFeatureRequest().setFilterRect(rect)):
-                if not feature.hasGeometry():
-                    continue
-                distance = feature.geometry().distance(target)
-                if shortest is None or distance < shortest:
-                    shortest, nearest = distance, feature
-            if nearest is not None:
-                return nearest
+        while search <= reach * 4:
+            found = self._closest_within(layer, point, search)
+            if found is not None:
+                return self._closest_within(layer, point, search * 2) or found
             search *= 2
             self._pump_ui()
 

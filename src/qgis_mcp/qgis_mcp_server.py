@@ -42,6 +42,11 @@ logger = logging.getLogger("QgisMCPServer")
 UNAUTHENTICATED = "unauthenticated"
 """Error code the plugin returns when the token is missing or wrong."""
 
+PROTOCOL_MISMATCH = "protocol_mismatch"
+"""Error code the plugin returns when the two sides speak different protocols."""
+
+_UPGRADE_ADVICE = "Copy the current qgis_mcp_plugin folder into your QGIS profile, then restart QGIS."
+
 PROTOCOL_VERSION = 1
 """Wire protocol this server speaks. The plugin must report the same number."""
 
@@ -109,6 +114,10 @@ class QgisMCPServer:
     MAX_STALE_RESPONSES = 8
     """Responses with an unexpected id that are skipped before the client gives up."""
 
+    HANDSHAKE_TIMEOUT = 10
+    """Seconds allowed for the opening ping. A plugin that never frames its
+    answer must fail fast, not hold the server for the full read timeout."""
+
     def __init__(self, host=DEFAULT_HOST, port=DEFAULT_PORT, token=""):
         self.host = host
         self.port = port
@@ -172,10 +181,10 @@ class QgisMCPServer:
             chunk = self._open_socket().recv(self.RECV_BUFFER_SIZE)
             if not chunk:
                 self.disconnect()
-                raise Exception(f"Connection closed by QGIS while waiting for response to '{command_type}'")
+                raise ConnectionError(f"Connection closed by QGIS while waiting for response to '{command_type}'")
             self._buffer += chunk
             if len(self._buffer) > self.MAX_RESPONSE_BYTES:
-                self._buffer = b""
+                self.disconnect()
                 raise Exception(f"Response for '{command_type}' exceeded {self.MAX_RESPONSE_BYTES} bytes")
         line, self._buffer = self._buffer.split(b"\n", 1)
         return line
@@ -252,16 +261,23 @@ def _check_protocol(connection):
     with a fresh token.
 
     Raises:
-        ToolError: If the plugin reports a different protocol version.
+        ToolError: If the plugin reports a different protocol version, or never
+            answers the opening ping.
     """
-    response = connection.send_command("ping")
+    try:
+        response = connection.send_command("ping", timeout=connection.HANDSHAKE_TIMEOUT)
+    except Exception as e:
+        raise ToolError(f"The QGIS MCP plugin did not answer the opening ping: {e}. {_UPGRADE_ADVICE}")
+
+    if response.get("code") == PROTOCOL_MISMATCH:
+        raise ToolError(f"{response.get('message')} {_UPGRADE_ADVICE}")
     if response.get("status") != "success":
         return
     remote = (response.get("result") or {}).get("protocol")
     if remote != PROTOCOL_VERSION:
         raise ToolError(
             f"The QGIS MCP plugin speaks protocol {remote!r} and this server speaks {PROTOCOL_VERSION}. "
-            "Copy the current qgis_mcp_plugin folder into your QGIS profile, then restart QGIS."
+            f"{_UPGRADE_ADVICE}"
         )
 
 

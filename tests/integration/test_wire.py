@@ -243,3 +243,20 @@ class TestTokenRecovery:
         exchange(listening, client, request("ping", token="wrong", request_id="same"))
 
         assert listening.answered == {}
+
+
+class TestSessionFile:
+    def test_a_failed_start_keeps_another_instance_session_file(self, listening, iface):
+        from qgis_mcp_plugin.qgis_mcp_plugin import QgisMCPServer
+
+        rival = QgisMCPServer(iface=iface, port=listening.port, token=TOKEN)
+
+        assert rival.start() is False
+        assert Path(listening.session_file_path()).exists()
+
+
+class TestTokenEncoding:
+    def test_a_non_ascii_token_is_refused_and_not_a_crash(self, listening, client):
+        response = exchange(listening, client, request("ping", token="tökén"))[0]
+
+        assert response["code"] == "unauthenticated"
