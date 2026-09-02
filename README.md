@@ -1,5 +1,10 @@
 # QGISMCP - QGIS Model Context Protocol Integration
 
+[![PyPI](https://img.shields.io/pypi/v/qgis-mcp)](https://pypi.org/project/qgis-mcp/)
+[![Python](https://img.shields.io/pypi/pyversions/qgis-mcp)](https://pypi.org/project/qgis-mcp/)
+[![CI](https://github.com/jtdub/qgis-mcp/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/jtdub/qgis-mcp/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+
 QGISMCP connects [QGIS](https://qgis.org/) to [Claude AI](https://claude.ai/chat) through the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/docs/getting-started/intro), allowing Claude to directly interact with and control QGIS. This integration enables prompt assisted project creation, layer loading, styling, cartography, spatial analysis, and more.
 
 This project is strongly based on the [BlenderMCP](https://github.com/ahujasid/blender-mcp/tree/main) project by [Siddharth Ahuja](https://x.com/sidahuj)
@@ -49,9 +54,16 @@ uv runs the server from your clone. You do not need it to develop.
 [Poetry](https://python-poetry.org/docs/#installation) builds the project and
 manages its dependencies, and the Development section below uses it.
 
-### Download code
+### The MCP server
 
-Download this repo to your computer. You can clone it with:
+Run it straight from PyPI. You do not need a clone.
+
+```bash
+uvx qgis-mcp        # run it without installing
+pipx install qgis-mcp   # or install it once
+```
+
+To work from a clone instead:
 
 ```bash
 git clone git@github.com:jtdub/qgis-mcp.git
@@ -59,15 +71,25 @@ git clone git@github.com:jtdub/qgis-mcp.git
 
 ### QGIS plugin
 
-You need to copy the folder [qgis_mcp_plugin](/qgis_mcp_plugin/) and its content on your QGIS profile plugins folder.
+The plugin and the server check that they speak the same protocol, so install
+the two from the same release.
 
-You can get your profile folder in QGIS going to menu `Settings` -> `User profiles` -> `Open active profile folder` Then, go to `Python/plugins` and paste the folder `qgis_mcp_plugin`.
+Download `qgis_mcp_plugin-<version>.zip` from the
+[latest release](https://github.com/jtdub/qgis-mcp/releases/latest). In QGIS,
+open `Plugins` > `Manage and Install Plugins` > `Install from ZIP`, choose the
+file, and install it.
 
-> On a Windows machine the plugins folder is usually located at: `C:\Users\USER\AppData\Roaming\QGIS\QGIS3\profiles\default\python\plugins`
+To install from a clone instead, copy the folder
+[qgis_mcp_plugin](/qgis_mcp_plugin/) into your QGIS profile plugins folder.
+Find that folder in QGIS at `Settings` > `User profiles` >
+`Open active profile folder`, then go to `python/plugins`.
+
+> On Windows the plugins folder is usually `C:\Users\USER\AppData\Roaming\QGIS\QGIS3\profiles\default\python\plugins`
 
 and on macOS: `~/Library/Application\ Support/QGIS/QGIS3/profiles/default/python/plugins`
 
-Then close QGIS and open it again. Go to the menu option `Plugins` > `Manage and Install Plugins`, select the **`Installed`** tab, and tick the QGIS MCP checkbox.
+Then restart QGIS. Go to `Plugins` > `Manage and Install Plugins`, select the
+**`Installed`** tab, and tick the QGIS MCP checkbox.
 
 > The `All` tab lists the official QGIS Plugin Repository. This plugin is not published there yet, so you will not find it in that tab.
 

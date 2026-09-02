@@ -1,0 +1,124 @@
+---
+name: Prepare Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump_rule:
+        description: "How to bump the version"
+        required: true
+        default: "patch"
+        type: choice
+        options:
+          - "prerelease"
+          - "patch"
+          - "minor"
+          - "major"
+      date:
+        description: "Release date, YYYY-MM-DD. Defaults to today."
+        required: false
+        default: ""
+
+jobs:
+  prepare-release:
+    name: Prepare Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: develop
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Poetry
+        run: pipx install poetry
+
+      - name: Install dependencies
+        run: poetry install --with dev
+
+      - name: Bump the version
+        run: |
+          poetry version "${{ github.event.inputs.bump_rule }}"
+          NEW_VERSION=$(poetry version --short)
+          echo "NEW_VERSION=$NEW_VERSION" >> "$GITHUB_ENV"
+          echo "RELEASE_BRANCH=release/v$NEW_VERSION" >> "$GITHUB_ENV"
+
+      - name: Set the release date
+        run: |
+          if [ -z "${{ github.event.inputs.date }}" ]; then
+            echo "RELEASE_DATE=$(date -u +%Y-%m-%d)" >> "$GITHUB_ENV"
+          else
+            echo "RELEASE_DATE=${{ github.event.inputs.date }}" >> "$GITHUB_ENV"
+          fi
+
+      - name: Match the plugin version to the package version
+        run: |
+          # The plugin and the package ship together, and a test asserts the two agree.
+          sed -i -E "s/^version=.*/version=${NEW_VERSION}/" qgis_mcp_plugin/metadata.txt
+          sed -i -E "s/^PLUGIN_VERSION = \".*\"/PLUGIN_VERSION = \"${NEW_VERSION}\"/" \
+            qgis_mcp_plugin/qgis_mcp_plugin.py
+          grep -q "version=${NEW_VERSION}" qgis_mcp_plugin/metadata.txt
+          grep -q "PLUGIN_VERSION = \"${NEW_VERSION}\"" qgis_mcp_plugin/qgis_mcp_plugin.py
+
+      - name: Point towncrier at the notes for this minor series
+        run: |
+          SERIES=$(echo "$NEW_VERSION" | cut -d. -f1,2)
+          NOTES="docs/admin/release_notes/version_${SERIES}.md"
+          echo "NOTES=$NOTES" >> "$GITHUB_ENV"
+          if [ ! -f "$NOTES" ]; then
+            printf '# v%s Release Notes\n\nThis document lists every change in the %s series.\n\n<!-- towncrier release notes start -->\n' \
+              "$SERIES" "$SERIES" > "$NOTES"
+            sed -i -E "s|^filename = .*|filename = \"${NOTES}\"|" pyproject.toml
+            echo "| ${SERIES} | [v${SERIES} release notes](version_${SERIES}.md) |" >> docs/admin/release_notes/index.md
+          fi
+
+      - name: Build the release notes
+        run: |
+          poetry run towncrier build \
+            --version "$NEW_VERSION" \
+            --date "$RELEASE_DATE" \
+            --yes
+
+      - name: Regenerate the lock file
+        run: poetry lock
+
+      - name: Open the release pull request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$RELEASE_BRANCH"
+          git add -A
+          git commit -m "Release v${NEW_VERSION}"
+          git push origin "$RELEASE_BRANCH"
+          gh pr create \
+            --base develop \
+            --head "$RELEASE_BRANCH" \
+            --title "Release v${NEW_VERSION}" \
+            --label no-changelog \
+            --body "Prepared by the Prepare Release workflow.
+
+          - The version is now \`${NEW_VERSION}\`, in \`pyproject.toml\`, \`qgis_mcp_plugin/metadata.txt\`, and \`PLUGIN_VERSION\`.
+          - The fragments under \`changes/\` are built into \`${NOTES}\`.
+          - \`poetry.lock\` is regenerated.
+
+          Merge this, then publish the draft release for tag \`v${NEW_VERSION}\`. That runs the Release workflow."
+
+      - name: Create the draft GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "v${NEW_VERSION}" \
+            --draft \
+            --title "v${NEW_VERSION}" \
+            --target develop \
+            --notes "$(sed -n "/## \[v${NEW_VERSION}/,/^## \[v[0-9]/p" "$NOTES" | sed '$d')"
