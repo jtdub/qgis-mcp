@@ -229,3 +229,17 @@ class TestRequestCache:
 
         assert first == second
         assert len(layers_named("c")) == 1
+
+
+class TestTokenRecovery:
+    def test_a_rejected_request_can_be_retried_with_the_right_token(self, listening, client):
+        rejected = exchange(listening, client, request("ping", token="wrong", request_id="same"))[0]
+        accepted = exchange(listening, client, request("ping", request_id="same"))[0]
+
+        assert rejected["code"] == "unauthenticated"
+        assert accepted["status"] == "success"
+
+    def test_a_rejected_request_leaves_the_cache_empty(self, listening, client):
+        exchange(listening, client, request("ping", token="wrong", request_id="same"))
+
+        assert listening.answered == {}

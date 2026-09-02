@@ -189,29 +189,51 @@ class TestProtocolVersion:
 
 class TestResponseCache:
     def test_a_repeated_request_id_is_answered_from_the_cache(self, plugin_server):
-        plugin_server.execute_command = MagicMock(return_value={"status": "success", "result": {"n": 1}})
+        plugin_server._dispatch = MagicMock(return_value={"status": "success", "result": {"n": 1}})
 
-        first = plugin_server._answer(_command("filter_layer", request_id="same"))
-        second = plugin_server._answer(_command("filter_layer", request_id="same"))
+        first = plugin_server.execute_command(_command("filter_layer", request_id="same"))
+        second = plugin_server.execute_command(_command("filter_layer", request_id="same"))
 
         assert first is second
-        plugin_server.execute_command.assert_called_once()
+        plugin_server._dispatch.assert_called_once()
 
     def test_a_new_request_id_runs_the_handler_again(self, plugin_server):
-        plugin_server.execute_command = MagicMock(return_value={"status": "success", "result": {}})
+        plugin_server._dispatch = MagicMock(return_value={"status": "success", "result": {}})
 
-        plugin_server._answer(_command("filter_layer", request_id="one"))
-        plugin_server._answer(_command("filter_layer", request_id="two"))
+        plugin_server.execute_command(_command("filter_layer", request_id="one"))
+        plugin_server.execute_command(_command("filter_layer", request_id="two"))
 
-        assert plugin_server.execute_command.call_count == 2
+        assert plugin_server._dispatch.call_count == 2
 
     def test_the_cache_does_not_grow_without_bound(self, plugin_server):
-        plugin_server.execute_command = MagicMock(return_value={"status": "success", "result": {}})
+        plugin_server._dispatch = MagicMock(return_value={"status": "success", "result": {}})
 
         for index in range(plugin_server.RESPONSE_CACHE_SIZE + 5):
-            plugin_server._answer(_command("ping", request_id=f"req-{index}"))
+            plugin_server.execute_command(_command("ping", request_id=f"req-{index}"))
 
         assert len(plugin_server.answered) == plugin_server.RESPONSE_CACHE_SIZE
+
+    def test_a_rejected_token_is_not_cached(self, plugin_server):
+        plugin_server.execute_command(_command("ping", token="wrong", request_id="same"))
+
+        assert plugin_server.answered == {}
+
+    def test_a_fresh_token_recovers_after_a_rejection(self, plugin_server):
+        rejected = plugin_server.execute_command(_command("ping", token="wrong", request_id="same"))
+        accepted = plugin_server.execute_command(_command("ping", request_id="same"))
+
+        assert rejected["code"] == "unauthenticated"
+        assert accepted["status"] == "success"
+
+    def test_a_protocol_mismatch_is_not_cached(self, plugin_server):
+        plugin_server.execute_command(_command("ping", protocol=999, request_id="same"))
+
+        assert plugin_server.answered == {}
+
+    def test_an_unknown_command_is_not_cached(self, plugin_server):
+        plugin_server.execute_command(_command("no_such_command", request_id="same"))
+
+        assert plugin_server.answered == {}
 
 
 class TestFraming:

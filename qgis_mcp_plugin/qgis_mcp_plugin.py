@@ -99,7 +99,10 @@ class QgisMCPServer(QObject):
     """Milliseconds between polls of the listening socket."""
 
     RESPONSE_CACHE_SIZE = 16
-    """Answered requests kept, so a retry with the same id does not run twice."""
+    """Answered requests kept, so a retry with the same id does not run twice.
+
+    Only a request that reached a handler is kept. A rejected request is not.
+    """
 
     FEATURE_BATCH_SIZE = 1000
     """Features written to a memory layer in one call, and the UI repaint interval."""
@@ -261,17 +264,6 @@ class QgisMCPServer(QObject):
         while len(self.answered) > self.RESPONSE_CACHE_SIZE:
             self.answered.popitem(last=False)
 
-    def _answer(self, command):
-        """Return the response for one command, from the cache when possible."""
-        request_id = command.get("id") if isinstance(command, dict) else None
-        if isinstance(request_id, str) and request_id in self.answered:
-            QgsMessageLog.logMessage(f"Answering repeated request {request_id} from the cache", "QGIS MCP")
-            return self.answered[request_id]
-        response = self.execute_command(command)
-        if isinstance(request_id, str):
-            self._remember(request_id, response)
-        return response
-
     def _process_client(self):
         """Read one chunk from the client, and answer every complete request in it."""
         try:
@@ -303,7 +295,7 @@ class QgisMCPServer(QObject):
             except (json.JSONDecodeError, UnicodeDecodeError) as e:
                 response = self._error(None, f"The request is not valid JSON: {str(e)}")
             else:
-                response = self._answer(command)
+                response = self.execute_command(command)
             try:
                 self._send_response(response)
             except Exception as e:
@@ -333,8 +325,24 @@ class QgisMCPServer(QObject):
             payload["code"] = code
         return self._stamp(request_id, payload)
 
+    def _dispatch(self, command, cmd_type, handler, params):
+        """Run one handler and wrap what it returns."""
+        try:
+            QgsMessageLog.logMessage(f"Executing handler for {cmd_type}", "QGIS MCP")
+            result = handler(**params)
+            QgsMessageLog.logMessage("Handler execution complete", "QGIS MCP")
+            return self._envelope(command, {"status": "success", "result": result})
+        except Exception as e:
+            QgsMessageLog.logMessage(f"Error in handler: {str(e)}", "QGIS MCP", Qgis.Critical)
+            traceback.print_exc()
+            return self._error(command.get("id"), str(e))
+
     def execute_command(self, command):
-        """Execute a command"""
+        """Run one command, and cache the answer under its request id.
+
+        The cache sits behind the token check and the protocol check, so a
+        rejected request is never stored and never served.
+        """
         try:
             cmd_type = command.get("type")
             params = command.get("params", {})
@@ -393,17 +401,18 @@ class QgisMCPServer(QObject):
             }
 
             handler = handlers.get(cmd_type)
-            if handler:
-                try:
-                    QgsMessageLog.logMessage(f"Executing handler for {cmd_type}", "QGIS MCP")
-                    result = handler(**params)
-                    QgsMessageLog.logMessage("Handler execution complete", "QGIS MCP")
-                    return self._envelope(command, {"status": "success", "result": result})
-                except Exception as e:
-                    QgsMessageLog.logMessage(f"Error in handler: {str(e)}", "QGIS MCP", Qgis.Critical)
-                    traceback.print_exc()
-                    return self._error(command.get("id"), str(e))
-            return self._error(command.get("id"), f"Unknown command type: {cmd_type}")
+            if handler is None:
+                return self._error(command.get("id"), f"Unknown command type: {cmd_type}")
+
+            request_id = command.get("id")
+            if isinstance(request_id, str) and request_id in self.answered:
+                QgsMessageLog.logMessage(f"Answering repeated request {request_id} from the cache", "QGIS MCP")
+                return self.answered[request_id]
+
+            response = self._dispatch(command, cmd_type, handler, params)
+            if isinstance(request_id, str):
+                self._remember(request_id, response)
+            return response
 
         except Exception as e:
             QgsMessageLog.logMessage(f"Error executing command: {str(e)}", "QGIS MCP", Qgis.Critical)
