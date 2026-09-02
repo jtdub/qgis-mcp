@@ -379,14 +379,26 @@ class TestVersionsAgree:
         assert PROTOCOL_VERSION == SERVER_PROTOCOL
 
     def test_the_plugin_metadata_matches_the_package_version(self):
+        """The three files that carry a version must agree.
+
+        The version is read from pyproject.toml, not from the installed
+        distribution. An editable install keeps the version it was installed
+        with, so a fresh bump would fail this for the wrong reason.
+        """
         import configparser
         import pathlib
-        from importlib.metadata import version
+        import re
 
         from qgis_mcp_plugin.qgis_mcp_plugin import PLUGIN_VERSION
 
-        metadata = configparser.ConfigParser()
-        metadata.read(pathlib.Path(__file__).resolve().parents[1] / "qgis_mcp_plugin" / "metadata.txt")
+        root = pathlib.Path(__file__).resolve().parents[1]
 
+        metadata = configparser.ConfigParser()
+        metadata.read(root / "qgis_mcp_plugin" / "metadata.txt")
+
+        pyproject = (root / "pyproject.toml").read_text(encoding="utf-8")
+        declared = re.search(r'^version = "([^"]+)"', pyproject, re.MULTILINE)
+
+        assert declared is not None, "pyproject.toml declares no version"
         assert metadata["general"]["version"] == PLUGIN_VERSION
-        assert version("qgis-mcp") == PLUGIN_VERSION
+        assert declared.group(1) == PLUGIN_VERSION
