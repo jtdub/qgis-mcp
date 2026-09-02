@@ -247,3 +247,15 @@ See the [tool reference](docs/user/tool_reference.md) for the full list with par
 - `execute_processing` — run QGIS Processing algorithms
 - `render_map` — render map canvas to image
 - `execute_code` — execute arbitrary PyQGIS code
+
+## License
+
+QGIS MCP is licensed under the [Apache License 2.0](LICENSE).
+
+It is a derivative of [BlenderMCP](https://github.com/ahujasid/blender-mcp),
+which is MIT licensed. The [NOTICE](NOTICE) file carries the MIT copyright and
+permission notice, as that licence requires. Keep `NOTICE` with the work if you
+redistribute it.
+
+Read the [licensing decision](docs/dev/licensing.md) for why Apache-2.0, and how
+it sits alongside the GPL that QGIS itself uses.
