@@ -1,7 +1,7 @@
 [general]
 name=QGIS MCP
 description=Socket server that lets an MCP client drive QGIS
-version=0.2.0
+version=0.3.0
 qgisMinimumVersion=3.34
 author=James Williams
 email=james.williams@jtdub.com

@@ -1,2 +1,0 @@
-The release notes moved to `docs/admin/release_notes/`. `CHANGELOG.md` now points at them.
-A change adds a file under `changes/` instead of editing a changelog. Read `docs/dev/changelog_fragments.md`.

@@ -1,2 +1,0 @@
-Install the MCP server from PyPI with `uvx qgis-mcp` or `pipx install qgis-mcp`. A clone is no longer needed.
-Install the QGIS plugin from the release zip with `Install from ZIP`, instead of copying a folder by hand.
