@@ -1,0 +1,29 @@
+<!--
+    Thank you for your interest in contributing to QGIS MCP. Open a feature
+    request or a bug report before you file a pull request. This avoids work
+    on a change we cannot accept.
+-->
+
+# Closes: #<ISSUE NUMBER GOES HERE>
+
+## What's Changed
+
+## Test plan
+
+<!--
+    Say how a reviewer confirms this works. Name the commands you ran, and the
+    result. If you tested against a running QGIS by hand, say which version.
+-->
+
+## To Do
+
+- [ ] Explanation of change(s)
+- [ ] `CHANGELOG.md` updated under `## [Unreleased]`
+- [ ] Both files changed for a new tool: the plugin handler and the MCP tool
+- [ ] `PROTOCOL_VERSION` bumped in both files, if the wire format changed
+- [ ] `tools.md` and the tool count in `tests/test_tool_annotations.py` updated
+- [ ] Unit tests: `uv run pytest`
+- [ ] Integration tests: `./scripts/run-integration-tests.sh`, or a reason none are needed
+- [ ] Lint and types: `uv run ruff check . && uv run mypy src/qgis_mcp/`
+- [ ] Documentation updates
+- [ ] AI assistance disclosed
