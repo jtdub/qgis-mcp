@@ -26,4 +26,12 @@
 - [ ] Integration tests: `./scripts/run-integration-tests.sh`, or a reason none are needed
 - [ ] Lint and types: `poetry run ruff check . && poetry run mypy src/qgis_mcp/`
 - [ ] Documentation updates
-- [ ] AI assistance disclosed
+- [ ] AI assistance disclosed below, per [the standard](https://qgis-mcp.readthedocs.io/en/latest/dev/ai_assisted_contributions/)
+
+## AI Assistance
+
+<!--
+    Say whether an AI assistant wrote part of this change, and which part.
+    "None" is a fine answer. So is "written with Claude Code".
+    You own every line either way.
+-->

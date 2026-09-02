@@ -6,6 +6,7 @@ The contributing guide lives in the documentation:
 - [Development environment](docs/dev/dev_environment.md) — install and run both suites
 - [Adding a tool](docs/dev/extending.md) — the two-file rule
 - [Architecture decisions](docs/dev/arch_decision.md) — why the code is shaped this way
+- [AI assisted contributions](docs/dev/ai_assisted_contributions.md) — disclose it, and own every line
 - [Changelog fragments](docs/dev/changelog_fragments.md) — what to put in `changes/`
 - [Release checklist](docs/dev/release_checklist.md) — how a release is cut
 
