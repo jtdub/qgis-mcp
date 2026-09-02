@@ -52,7 +52,7 @@ Otherwise installation instructions are on their website: [Install uv](https://d
 Download this repo to your computer. You can clone it with:
 
 ```bash
-git clone git@github.com:jtdub/qgis_mcp.git
+git clone git@github.com:jtdub/qgis-mcp.git
 ```
 
 ### QGIS plugin
@@ -83,7 +83,7 @@ Go to `Claude` > `Settings` > `Developer` > `Edit Config` > `claude_desktop_conf
             "args": [
                 "run",
                 "--directory",
-                "/ABSOLUTE/PATH/TO/qgis_mcp",
+                "/ABSOLUTE/PATH/TO/qgis-mcp",
                 "qgis-mcp"
             ]
         }
@@ -107,7 +107,7 @@ the environment:
     "mcpServers": {
         "qgis": {
             "command": "uv",
-            "args": ["run", "--directory", "/ABSOLUTE/PATH/TO/qgis_mcp", "qgis-mcp"],
+            "args": ["run", "--directory", "/ABSOLUTE/PATH/TO/qgis-mcp", "qgis-mcp"],
             "env": { "QGIS_MCP_TOKEN": "the-token-from-the-dock" }
         }
     }
