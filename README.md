@@ -9,6 +9,9 @@ QGISMCP connects [QGIS](https://qgis.org/) to [Claude AI](https://claude.ai/chat
 
 This project is strongly based on the [BlenderMCP](https://github.com/ahujasid/blender-mcp/tree/main) project by [Siddharth Ahuja](https://x.com/sidahuj)
 
+**[Read the documentation](https://qgis-mcp.readthedocs.io/)** for the user,
+administrator, and developer guides.
+
 ## Features
 
 - **Two-way communication**: Connect Claude AI to QGIS through a socket-based server
@@ -194,11 +197,11 @@ poetry run pylint src/qgis_mcp/      # static analysis
 poetry run mypy src/qgis_mcp/        # type checking
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for full development guidelines.
+See the [developer guide](docs/dev/contributing.md) for full development guidelines.
 
 ## Tools
 
-See [tools.md](tools.md) for the full reference with parameters and return values.
+See the [tool reference](docs/user/tool_reference.md) for the full list with parameters and return values.
 
 ### Project Management
 - `ping` — check server connectivity

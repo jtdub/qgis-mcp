@@ -1,0 +1,81 @@
+---
+site_name: QGIS MCP
+site_description: QGIS through the Model Context Protocol
+site_url: https://qgis-mcp.readthedocs.io/
+repo_url: https://github.com/jtdub/qgis-mcp
+repo_name: jtdub/qgis-mcp
+edit_uri: blob/develop/docs/
+copyright: Apache-2.0
+
+theme:
+  name: material
+  features:
+    - content.code.copy
+    - navigation.sections
+    - navigation.top
+    - search.highlight
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: teal
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: teal
+      toggle:
+        icon: material/weather-night
+        name: Switch to light mode
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+          options:
+            show_root_heading: true
+            show_source: false
+            members_order: source
+            docstring_style: google
+            filters: ["!^_"]
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.highlight
+  - pymdownx.superfences
+
+nav:
+  - Home: index.md
+  - User guide:
+      - Overview: user/app_overview.md
+      - Getting started: user/app_getting_started.md
+      - Use cases: user/app_use_cases.md
+      - Tool reference: user/tool_reference.md
+      - FAQ: user/faq.md
+  - Administrator guide:
+      - Install: admin/install.md
+      - Configure: admin/configure.md
+      - Upgrade: admin/upgrade.md
+      - Uninstall: admin/uninstall.md
+      - Compatibility: admin/compatibility_matrix.md
+      - Release notes:
+          - Index: admin/release_notes/index.md
+          - v0.2: admin/release_notes/version_0.2.md
+          - v0.1: admin/release_notes/version_0.1.md
+  - Developer guide:
+      - Contributing: dev/contributing.md
+      - Development environment: dev/dev_environment.md
+      - Adding a tool: dev/extending.md
+      - Architecture decisions: dev/arch_decision.md
+      - Changelog fragments: dev/changelog_fragments.md
+      - Release checklist: dev/release_checklist.md
+      - Code reference:
+          - Overview: dev/code_reference/index.md
+          - Server: dev/code_reference/server.md
+          - Models: dev/code_reference/models.md

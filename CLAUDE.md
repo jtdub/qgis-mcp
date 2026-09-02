@@ -80,7 +80,7 @@ Every new tool requires changes in **BOTH** files:
 1. **Plugin:** add handler method + register in `handlers` dict inside `execute_command()`
 2. **MCP server:** add an `async @mcp.tool()` function. A read tool awaits `_run_as(Model, "my_tool", {params})`; a write tool awaits `_run_json("my_tool", {params})`
 3. For a read tool, add a `TypedDict` to `src/qgis_mcp/models.py` and annotate the return with it. Add `ctx: Context` only when the tool reports progress
-4. Update `tools.md` with parameters and return values, and the tool count in `tests/test_tool_annotations.py`
+4. Update `docs/user/tool_reference.md` with parameters and return values, and the tool count in `tests/test_tool_annotations.py`
 
 ## Design Conventions
 
@@ -93,6 +93,20 @@ Every new tool requires changes in **BOTH** files:
 - A handler that loops calls `_pump_ui()` freely. The helper throttles itself, so no handler picks a rate.
 - Build a `QgsCoordinateTransform` once with `_transform()` and reuse it. Never build one inside a per-feature loop.
 - The plugin file cannot be imported outside QGIS. Only `_get_page_dimensions()` is pure Python.
+
+## Documentation
+
+The site is MkDocs, in `docs/`, with the navigation in `mkdocs.yml`.
+
+```bash
+poetry install --with docs
+poetry run mkdocs serve          # live reload
+poetry run mkdocs build --strict # the build CI runs
+```
+
+The build is strict. A broken link, or a page missing from the navigation,
+fails it. `CONTRIBUTING.md` and `CHANGELOG.md` at the root are pointers; the
+content lives under `docs/`.
 
 ## Testing
 

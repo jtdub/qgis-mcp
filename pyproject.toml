@@ -24,6 +24,7 @@ dependencies = [
 ]
 
 [project.urls]
+Documentation = "https://qgis-mcp.readthedocs.io/"
 Repository = "https://github.com/jtdub/qgis-mcp"
 Issues = "https://github.com/jtdub/qgis-mcp/issues"
 Changelog = "https://github.com/jtdub/qgis-mcp/blob/develop/CHANGELOG.md"
@@ -47,7 +48,9 @@ towncrier = ">=23.6"
 optional = true
 
 [tool.poetry.group.docs.dependencies]
+mkdocs = ">=1.6"
 mkdocs-material = ">=9.5"
+mkdocstrings = { version = ">=0.26", extras = ["python"] }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

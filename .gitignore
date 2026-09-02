@@ -25,3 +25,6 @@ htmlcov/
 
 # Poetry owns the lock file. uv recreates its own when a user runs the server.
 uv.lock
+
+# MkDocs build output
+site/
