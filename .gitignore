@@ -19,3 +19,6 @@ htmlcov/
 # Linter caches
 .mypy_cache/
 .ruff_cache/
+# Local Claude Code state
+.claude/
+.mcp.json

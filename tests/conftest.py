@@ -1,7 +1,7 @@
 """Shared fixtures for QGIS MCP tests."""
 
 import json
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -12,7 +12,6 @@ from qgis_mcp.qgis_mcp_server import QgisMCPServer
 def mock_socket():
     """A mock socket that simulates a connected state."""
     sock = MagicMock()
-    sock.getsockopt.return_value = 0  # SO_ERROR = 0 means connected
     return sock
 
 
@@ -29,7 +28,7 @@ def make_recv_response():
     """Factory to configure a mock socket's recv to return a JSON response."""
 
     def _make(sock, response_dict):
-        sock.recv.return_value = json.dumps(response_dict).encode("utf-8")
+        sock.recv.return_value = json.dumps(response_dict).encode("utf-8") + b"\n"
 
     return _make
 
@@ -42,8 +41,16 @@ def success_response():
 
 @pytest.fixture
 def mock_ctx():
-    """Mock MCP Context object."""
-    return MagicMock()
+    """Mock MCP Context object. Its report_progress and info are awaitable."""
+    return AsyncMock()
+
+
+@pytest.fixture(autouse=True)
+def isolate_session_lookup(monkeypatch, tmp_path):
+    """Keep resolve_session away from any real QGIS profile on this machine."""
+    for name in ("QGIS_MCP_HOST", "QGIS_MCP_PORT", "QGIS_MCP_TOKEN"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("QGIS_MCP_SESSION_FILE", str(tmp_path / "absent-session.json"))
 
 
 @pytest.fixture(autouse=True)

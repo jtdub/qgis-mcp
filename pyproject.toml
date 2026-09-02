@@ -9,11 +9,16 @@ authors = [
     {name = "James Williams", email = "james.williams@jtdub.com"},
 ]
 dependencies = [
-    "mcp[cli]>=1.3.0",
+    "mcp[cli]>=1.12,<2",
+    "typing-extensions>=4.12",
+    "anyio>=4.0",
 ]
 
 [project.urls]
 Repository = "https://github.com/jtdub/qgis_mcp"
+
+[project.scripts]
+qgis-mcp = "qgis_mcp.qgis_mcp_server:main"
 
 [project.optional-dependencies]
 dev = [
@@ -54,12 +59,15 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "qgis_mcp_plugin/*" = [
-    "F403",   # star imports (from qgis.gui import *)
-    "F405",   # undefined names from star imports
     "E402",   # module level import not at top
+    "B905",   # zip strict= needs 3.10; this file runs on the Python inside QGIS
 ]
 "tests/test_plugin_helpers.py" = [
     "E402",   # imports after sys.modules mocking
+]
+"tests/integration/*" = [
+    "UP",     # this suite also runs under the Python inside a QGIS bundle
+    "E402",   # imports after a version guard and importorskip
 ]
 
 [tool.ruff.lint.isort]
@@ -79,7 +87,6 @@ disable = [
     "R0913",  # too-many-arguments
     "R0914",  # too-many-locals
     "W0603",  # global-statement
-    "W0613",  # unused-argument (ctx required by MCP framework)
     "W0707",  # raise-missing-from (handled by ruff B904)
     "W0718",  # broad-exception-caught
     "W0719",  # broad-exception-raised

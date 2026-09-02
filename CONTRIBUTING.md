@@ -58,10 +58,10 @@ This project connects [QGIS](https://qgis.org/) to [Claude AI](https://claude.ai
        "qgis": {
          "command": "uv",
          "args": [
-           "--directory",
-           "/ABSOLUTE/PATH/TO/qgis_mcp/src/qgis_mcp",
            "run",
-           "qgis_mcp_server.py"
+           "--directory",
+           "/ABSOLUTE/PATH/TO/qgis_mcp",
+           "qgis-mcp"
          ]
        }
      }
@@ -94,7 +94,31 @@ Run with coverage:
 uv run pytest --cov=src/qgis_mcp --cov-report=term-missing
 ```
 
-Tests cover the MCP server side only (no QGIS instance required). The plugin handlers require a running QGIS instance and are not part of the automated suite.
+Tests cover the MCP server side, and the parts of the plugin that do not call PyQGIS. `tests/test_plugin_helpers.py` imports the plugin with fake `qgis.*` modules, so command dispatch, authentication, and the `execute_code` gate are tested without QGIS. Handlers that call PyQGIS still need a running QGIS instance and are not part of the automated suite.
+
+### Integration tests against a real QGIS
+
+The unit suite never starts QGIS. The integration suite does.
+
+```bash
+./scripts/run-integration-tests.sh          # uses a local QGIS Python
+./scripts/run-integration-tests.sh docker   # runs every layer in a container
+```
+
+The suite has three layers:
+
+- `tests/integration/test_handlers.py` calls each plugin handler against real layers.
+- `tests/integration/test_wire.py` drives a real socket, and pumps the poll by hand.
+- `tests/integration/test_end_to_end.py` calls the tools through a real MCP client
+  session. It proves the output schemas match what the handlers return.
+
+WARNING: The two suites cannot share one pytest process. `tests/test_plugin_helpers.py`
+installs fake `qgis.*` modules on import. Run `uv run pytest` and the script separately.
+
+The end to end layer needs Python 3.10 or newer. A macOS QGIS bundle ships Python 3.9,
+so that layer skips locally and runs under docker.
+
+If `qgis.core` cannot be imported, the integration directory collects nothing.
 
 ## Linting
 
@@ -117,7 +141,7 @@ Every new tool requires changes in **both** the plugin and the MCP server:
 2. **MCP server** (`src/qgis_mcp/qgis_mcp_server.py`): add an `@mcp.tool()` function that calls `qgis.send_command("my_tool", {params})`
 3. **Docs**: update [tools.md](tools.md) with parameters and return values
 
-All coordinate I/O uses **WGS84 (EPSG:4326)**. Use `_find_layer_by_name()` for layer lookup by name.
+All coordinate I/O uses **WGS84 (EPSG:4326)**. Use `_resolve_layer()` for layer lookup. It accepts a layer name or a layer id.
 
 ## Contributing Guidelines
 
