@@ -73,7 +73,7 @@ class TestGetQgisConnection:
 
 class TestHandshake:
     @patch("qgis_mcp.qgis_mcp_server.QgisMCPServer")
-    def test_a_matching_protocol_is_stored_on_the_connection(self, mock_cls):
+    def test_a_matching_protocol_is_accepted(self, mock_cls):
         server = MagicMock()
         server.connect.return_value = True
         server.is_open.return_value = True
@@ -83,9 +83,7 @@ class TestHandshake:
         }
         mock_cls.return_value = server
 
-        conn = get_qgis_connection()
-
-        assert conn.plugin_info["plugin_version"] == "0.2.0"
+        assert get_qgis_connection() is server
         server.send_command.assert_called_once_with("ping")
 
     @patch("qgis_mcp.qgis_mcp_server.QgisMCPServer")
@@ -109,4 +107,4 @@ class TestHandshake:
         mock_cls.return_value = server
 
         assert get_qgis_connection() is server
-        assert server.plugin_info == {}
+        server.disconnect.assert_not_called()

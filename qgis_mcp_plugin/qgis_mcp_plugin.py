@@ -5,6 +5,7 @@ import json
 import os
 import secrets
 import socket
+import time
 import traceback
 from collections import OrderedDict
 
@@ -109,6 +110,12 @@ class QgisMCPServer(QObject):
     DEFAULT_GRADUATED_CLASSES = 5
     """Equal-interval classes a graduated renderer gets when the caller names none."""
 
+    PUMP_INTERVAL_SECONDS = 0.05
+    """Shortest gap between two repaints of the QGIS window during a handler."""
+
+    WKT_PRECISION = 6
+    """Decimal places kept in the WGS84 WKT a feature page returns."""
+
     def __init__(self, host="127.0.0.1", port=9876, iface=None, token=None, allow_execute_code=False):
         super().__init__()
         self.host = host
@@ -122,6 +129,7 @@ class QgisMCPServer(QObject):
         self.buffer = b""
         self.timer = None
         self.answered = OrderedDict()
+        self._last_pump = 0.0
 
     def session_file_path(self):
         """Return the path of the file that publishes this server's token."""
@@ -238,14 +246,8 @@ class QgisMCPServer(QObject):
             body = json.dumps(payload).encode("utf-8")
         except (TypeError, ValueError) as e:
             QgsMessageLog.logMessage(f"Response is not JSON serializable: {str(e)}", "QGIS MCP", Qgis.Critical)
-            body = json.dumps(
-                {
-                    "id": payload.get("id") if isinstance(payload, dict) else None,
-                    "protocol": PROTOCOL_VERSION,
-                    "status": "error",
-                    "message": f"Result is not JSON serializable: {str(e)}",
-                }
-            ).encode("utf-8")
+            request_id = payload.get("id") if isinstance(payload, dict) else None
+            body = json.dumps(self._error(request_id, f"Result is not JSON serializable: {str(e)}")).encode("utf-8")
         self.client.settimeout(self.SEND_TIMEOUT)
         try:
             self.client.sendall(body + b"\n")
@@ -288,14 +290,7 @@ class QgisMCPServer(QObject):
         if len(self.buffer) > self.MAX_REQUEST_BYTES:
             self.buffer = b""
             with contextlib.suppress(Exception):
-                self._send_response(
-                    {
-                        "id": None,
-                        "protocol": PROTOCOL_VERSION,
-                        "status": "error",
-                        "message": f"Request exceeded {self.MAX_REQUEST_BYTES} bytes.",
-                    }
-                )
+                self._send_response(self._error(None, f"Request exceeded {self.MAX_REQUEST_BYTES} bytes."))
             self._drop_client("Request too large", Qgis.Warning)
             return
 
@@ -306,12 +301,7 @@ class QgisMCPServer(QObject):
             try:
                 command = json.loads(line.decode("utf-8"))
             except (json.JSONDecodeError, UnicodeDecodeError) as e:
-                response = {
-                    "id": None,
-                    "protocol": PROTOCOL_VERSION,
-                    "status": "error",
-                    "message": f"The request is not valid JSON: {str(e)}",
-                }
+                response = self._error(None, f"The request is not valid JSON: {str(e)}")
             else:
                 response = self._answer(command)
             try:
@@ -326,11 +316,22 @@ class QgisMCPServer(QObject):
             return False
         return hmac.compare_digest(supplied, self.token)
 
-    def _envelope(self, command, payload):
-        """Stamp a response with the request id and the protocol version."""
-        payload["id"] = command.get("id") if isinstance(command, dict) else None
+    def _stamp(self, request_id, payload):
+        """Add the request id and the protocol version to a response."""
+        payload["id"] = request_id
         payload["protocol"] = PROTOCOL_VERSION
         return payload
+
+    def _envelope(self, command, payload):
+        """Stamp a response with the id the command carried."""
+        return self._stamp(command.get("id") if isinstance(command, dict) else None, payload)
+
+    def _error(self, request_id, message, code=None):
+        """Return a stamped error response."""
+        payload = {"status": "error", "message": message}
+        if code is not None:
+            payload["code"] = code
+        return self._stamp(request_id, payload)
 
     def execute_command(self, command):
         """Execute a command"""
@@ -342,29 +343,19 @@ class QgisMCPServer(QObject):
                 QgsMessageLog.logMessage(
                     f"Rejected '{cmd_type}': the token is missing or wrong.", "QGIS MCP", Qgis.Warning
                 )
-                return self._envelope(
-                    command,
-                    {
-                        "status": "error",
-                        "code": "unauthenticated",
-                        "message": (
-                            "Authentication failed. Set QGIS_MCP_TOKEN to the token shown in the QGIS MCP dock, "
-                            "or let the client read it from the session file."
-                        ),
-                    },
+                return self._error(
+                    command.get("id"),
+                    "Authentication failed. Set QGIS_MCP_TOKEN to the token shown in the QGIS MCP dock, "
+                    "or let the client read it from the session file.",
+                    code="unauthenticated",
                 )
 
             if command.get("protocol") != PROTOCOL_VERSION:
-                return self._envelope(
-                    command,
-                    {
-                        "status": "error",
-                        "code": "protocol_mismatch",
-                        "message": (
-                            f"This plugin speaks protocol {PROTOCOL_VERSION} and the client sent "
-                            f"{command.get('protocol')!r}. Update the qgis_mcp package and the plugin together."
-                        ),
-                    },
+                return self._error(
+                    command.get("id"),
+                    f"This plugin speaks protocol {PROTOCOL_VERSION} and the client sent "
+                    f"{command.get('protocol')!r}. Update the qgis_mcp package and the plugin together.",
+                    code="protocol_mismatch",
                 )
 
             handlers = {
@@ -383,22 +374,18 @@ class QgisMCPServer(QObject):
                 "save_project": self.save_project,
                 "render_map": self.render_map,
                 "create_new_project": self.create_new_project,
-                # Phase 1: Introspection
                 "get_layer_fields": self.get_layer_fields,
                 "get_unique_values": self.get_unique_values,
                 "sample_features": self.sample_features,
                 "get_layer_extent": self.get_layer_extent,
-                # Phase 2: Filtering & Spatial Operations
                 "filter_layer": self.filter_layer,
                 "trace_downstream": self.trace_downstream,
                 "set_layer_visibility": self.set_layer_visibility,
                 "set_canvas_extent": self.set_canvas_extent,
-                # Phase 3: Styling
                 "style_line_graduated": self.style_line_graduated,
                 "style_simple": self.style_simple,
                 "style_categorized": self.style_categorized,
                 "add_labels": self.add_labels,
-                # Phase 4: Print Layout & Cartography
                 "create_print_layout": self.create_print_layout,
                 "add_legend": self.add_legend,
                 "add_inset_map": self.add_inset_map,
@@ -415,28 +402,26 @@ class QgisMCPServer(QObject):
                 except Exception as e:
                     QgsMessageLog.logMessage(f"Error in handler: {str(e)}", "QGIS MCP", Qgis.Critical)
                     traceback.print_exc()
-                    return self._envelope(command, {"status": "error", "message": str(e)})
-            return self._envelope(command, {"status": "error", "message": f"Unknown command type: {cmd_type}"})
+                    return self._error(command.get("id"), str(e))
+            return self._error(command.get("id"), f"Unknown command type: {cmd_type}")
 
         except Exception as e:
             QgsMessageLog.logMessage(f"Error executing command: {str(e)}", "QGIS MCP", Qgis.Critical)
             traceback.print_exc()
-            return self._envelope(command, {"status": "error", "message": str(e)})
+            return self._error(command.get("id"), str(e))
 
-    # Helpers
     def _pump_ui(self):
-        """Let QGIS repaint during a long handler."""
+        """Let QGIS repaint during a long handler.
+
+        A handler may call this on every iteration. The throttle keeps the cost
+        bounded, so no handler has to pick a rate of its own.
+        """
+        now = time.monotonic()
+        if now - self._last_pump < self.PUMP_INTERVAL_SECONDS:
+            return
+        self._last_pump = now
         with contextlib.suppress(Exception):
             QApplication.processEvents()
-
-    def _find_layer_by_name(self, layer_name):
-        """Find a layer by name. Raises Exception if not found."""
-        project = QgsProject.instance()
-        for layer in project.mapLayers().values():
-            if layer.name() == layer_name:
-                return layer
-        available = [lyr.name() for lyr in project.mapLayers().values()]
-        raise Exception(f"Layer '{layer_name}' not found. Available layers: {available}")
 
     def _resolve_layer(self, layer):
         """Find a layer by its id or by its name.
@@ -452,7 +437,7 @@ class QgisMCPServer(QObject):
             if candidate.name() == layer:
                 return candidate
         raise Exception(
-            f"Layer '{layer}' not found. Available names: {[lyr.name() for lyr in project.mapLayers().values()]}. "
+            f"Layer '{layer}' not found. Available layers: {[lyr.name() for lyr in project.mapLayers().values()]}. "
             f"Available ids: {list(project.mapLayers().keys())}"
         )
 
@@ -466,15 +451,60 @@ class QgisMCPServer(QObject):
         """Return the WGS84 CRS."""
         return QgsCoordinateReferenceSystem("EPSG:4326")
 
-    def _reproject(self, geom, source_crs, target_crs):
-        """Return a copy of geom reprojected between two CRSs.
+    def _transform(self, source_crs, target_crs):
+        """Return a reusable transform, or None when the two CRSs match.
+
+        Build this once and use it for every feature. A transform built inside
+        a loop costs a CRS lookup and a PROJ context for each feature.
+        """
+        if source_crs == target_crs:
+            return None
+        return QgsCoordinateTransform(source_crs, target_crs, QgsProject.instance())
+
+    def _transform_rect(self, rect, source_crs, target_crs):
+        """Return a bounding box reprojected between two CRSs.
 
         Raises:
             Exception: If the reprojection fails.
         """
-        if source_crs == target_crs:
+        xform = self._transform(source_crs, target_crs)
+        if xform is None:
+            return rect
+        try:
+            return xform.transformBoundingBox(rect)
+        except QgsCsException as exc:
+            raise Exception(f"Cannot reproject from {source_crs.authid()} to {target_crs.authid()}: {exc}") from exc
+
+    def _rect_to_wgs84(self, rect, source_crs):
+        """Return a bounding box in WGS84."""
+        return self._transform_rect(rect, source_crs, self._wgs84_crs())
+
+    def _rect_from_wgs84(self, rect, target_crs):
+        """Return a WGS84 bounding box in the target CRS."""
+        return self._transform_rect(rect, self._wgs84_crs(), target_crs)
+
+    def _point_from_wgs84(self, point, target_crs):
+        """Return a WGS84 point in the target CRS.
+
+        Raises:
+            Exception: If the reprojection fails.
+        """
+        xform = self._transform(self._wgs84_crs(), target_crs)
+        if xform is None:
+            return point
+        try:
+            return xform.transform(point)
+        except QgsCsException as exc:
+            raise Exception(f"Cannot reproject to {target_crs.authid()}: {exc}") from exc
+
+    def _apply_transform(self, geom, xform, source_crs, target_crs):
+        """Return a copy of geom moved by a transform built once for many features.
+
+        Raises:
+            Exception: If the reprojection fails.
+        """
+        if xform is None:
             return QgsGeometry(geom)
-        xform = QgsCoordinateTransform(source_crs, target_crs, QgsProject.instance())
         reprojected = QgsGeometry(geom)
         try:
             outcome = reprojected.transform(xform)
@@ -485,6 +515,10 @@ class QgisMCPServer(QObject):
                 f"Reprojection from {source_crs.authid()} to {target_crs.authid()} failed (code {outcome})."
             )
         return reprojected
+
+    def _reproject(self, geom, source_crs, target_crs):
+        """Return a copy of geom reprojected between two CRSs."""
+        return self._apply_transform(geom, self._transform(source_crs, target_crs), source_crs, target_crs)
 
     def _transform_to_wgs84(self, geom, source_crs):
         """Transform a geometry to WGS84. Returns a new geometry."""
@@ -517,6 +551,27 @@ class QgisMCPServer(QObject):
             base = "Multi" + base
         return base
 
+    def _symbol_for(self, layer, color, outline_color="#000000", width=0.5):
+        """Return a symbol that suits the layer's geometry.
+
+        Raises:
+            Exception: If the layer has no point, line, or polygon geometry.
+        """
+        geom_type = layer.geometryType()
+        if geom_type == QgsWkbTypes.LineGeometry:
+            return QgsLineSymbol.createSimple(
+                {"color": color, "width": str(width), "capstyle": "round", "joinstyle": "round"}
+            )
+        if geom_type == QgsWkbTypes.PolygonGeometry:
+            return QgsFillSymbol.createSimple(
+                {"color": color, "outline_color": outline_color, "outline_width": str(width)}
+            )
+        if geom_type == QgsWkbTypes.PointGeometry:
+            return QgsMarkerSymbol.createSimple(
+                {"color": color, "outline_color": outline_color, "outline_width": str(width), "size": "3"}
+            )
+        raise Exception(f"Layer '{layer.name()}' has a geometry type that cannot be styled.")
+
     def _truncate_wkt(self, wkt):
         """Shorten a WKT string so one feature cannot fill the response."""
         if len(wkt) <= self.MAX_WKT_CHARS:
@@ -537,7 +592,6 @@ class QgisMCPServer(QObject):
         mem_layer.updateFields()
         return mem_layer
 
-    # Command handlers
     def ping(self, **kwargs):
         """Report that the plugin is alive, and what it supports."""
         return {
@@ -718,7 +772,7 @@ class QgisMCPServer(QObject):
 
     def get_layer_fields(self, layer_name, **kwargs):
         """Get detailed field information for a vector layer"""
-        layer = self._require_vector(self._find_layer_by_name(layer_name), layer_name)
+        layer = self._require_vector(self._resolve_layer(layer_name), layer_name)
 
         fields = []
         for f in layer.fields():
@@ -759,7 +813,7 @@ class QgisMCPServer(QObject):
 
     def get_unique_values(self, layer_name, field_name, limit=50, offset=0, **kwargs):
         """Return one sorted page of the distinct values a field holds"""
-        layer = self._require_vector(self._find_layer_by_name(layer_name), layer_name)
+        layer = self._require_vector(self._resolve_layer(layer_name), layer_name)
         field_idx = self._field_index(layer, field_name)
         limit, offset = self._page_bounds(limit, offset)
 
@@ -776,7 +830,7 @@ class QgisMCPServer(QObject):
             "values": page,
         }
 
-    def _feature_page(self, layer, layer_name, limit, offset, expression=None, precision=6):
+    def _feature_page(self, layer, limit, offset, expression=None):
         """Return one page of features, with WGS84 WKT geometry."""
         limit, offset = self._page_bounds(limit, offset)
 
@@ -787,6 +841,8 @@ class QgisMCPServer(QObject):
                 raise Exception(f"Invalid expression: {expr.parserErrorString()}")
             request.setFilterExpression(expression)
 
+        wgs84 = self._wgs84_crs()
+        xform = self._transform(layer.crs(), wgs84)
         field_names = [field.name() for field in layer.fields()]
         features = []
         seen = 0
@@ -799,20 +855,18 @@ class QgisMCPServer(QObject):
                 has_more = True
                 break
 
-            attrs = {}
-            for name in field_names:
-                value = feature.attribute(name)
-                attrs[name] = None if value == NULL else value
+            attrs = {name: (None if value == NULL else value) for name, value in zip(field_names, feature.attributes())}
 
             geom_wkt = None
             if feature.hasGeometry():
-                geometry = self._transform_to_wgs84(feature.geometry(), layer.crs())
-                geom_wkt = self._truncate_wkt(geometry.asWkt(precision=precision))
+                geometry = self._apply_transform(feature.geometry(), xform, layer.crs(), wgs84)
+                geom_wkt = self._truncate_wkt(geometry.asWkt(precision=self.WKT_PRECISION))
 
             features.append({"id": feature.id(), "attributes": attrs, "geometry_wkt": geom_wkt})
+            self._pump_ui()
 
         return {
-            "layer_name": layer_name,
+            "layer_name": layer.name(),
             "total_count": layer.featureCount(),
             "returned_count": len(features),
             "offset": offset,
@@ -822,19 +876,13 @@ class QgisMCPServer(QObject):
 
     def sample_features(self, layer_name, count=5, expression=None, offset=0, **kwargs):
         """Sample features from a layer with optional expression filter"""
-        layer = self._require_vector(self._find_layer_by_name(layer_name), layer_name)
-        return self._feature_page(layer, layer_name, count, offset, expression)
+        layer = self._require_vector(self._resolve_layer(layer_name), layer_name)
+        return self._feature_page(layer, count, offset, expression)
 
     def get_layer_extent(self, layer_name, **kwargs):
         """Get layer bounding box in WGS84"""
-        layer = self._find_layer_by_name(layer_name)
-        extent = layer.extent()
-
-        # Reproject to WGS84
-        wgs84 = self._wgs84_crs()
-        if layer.crs() != wgs84:
-            xform = QgsCoordinateTransform(layer.crs(), wgs84, QgsProject.instance())
-            extent = xform.transformBoundingBox(extent)
+        layer = self._resolve_layer(layer_name)
+        extent = self._rect_to_wgs84(layer.extent(), layer.crs())
 
         return {
             "layer_name": layer_name,
@@ -844,8 +892,6 @@ class QgisMCPServer(QObject):
             "ymax": extent.yMaximum(),
         }
 
-    # Phase 2: Filtering & Spatial Operations
-
     def _copy_features_to(self, mem_layer, source_layer, features):
         """Write features into a memory layer in batches, reprojected to WGS84.
 
@@ -854,13 +900,15 @@ class QgisMCPServer(QObject):
         """
         provider = mem_layer.dataProvider()
         source_crs = source_layer.crs()
+        wgs84 = self._wgs84_crs()
+        xform = self._transform(source_crs, wgs84)
         batch = []
         written = 0
         for feature in features:
             new_feature = QgsFeature(mem_layer.fields())
             new_feature.setAttributes(feature.attributes())
             if feature.hasGeometry():
-                new_feature.setGeometry(self._transform_to_wgs84(feature.geometry(), source_crs))
+                new_feature.setGeometry(self._apply_transform(feature.geometry(), xform, source_crs, wgs84))
             batch.append(new_feature)
             if len(batch) >= self.FEATURE_BATCH_SIZE:
                 provider.addFeatures(batch)
@@ -875,7 +923,7 @@ class QgisMCPServer(QObject):
 
     def filter_layer(self, layer_name, expression, output_name, **kwargs):
         """Create a new memory layer from features matching an expression"""
-        layer = self._require_vector(self._find_layer_by_name(layer_name), layer_name)
+        layer = self._require_vector(self._resolve_layer(layer_name), layer_name)
 
         expr = QgsExpression(expression)
         if expr.hasParserError():
@@ -893,7 +941,7 @@ class QgisMCPServer(QObject):
             "expression": expression,
         }
 
-    def _feature_by_field_value(self, layer, field_name, value, with_geometry=False):
+    def _feature_by_field_value(self, layer, field_name, value):
         """Return the first feature whose field equals a value, or None.
 
         The lookup goes to the data provider as an expression, so a large layer
@@ -901,8 +949,6 @@ class QgisMCPServer(QObject):
         """
         expression = f"{QgsExpression.quotedColumnRef(field_name)} = {QgsExpression.quotedValue(value)}"
         request = QgsFeatureRequest().setFilterExpression(expression).setLimit(1)
-        if not with_geometry:
-            request.setFlags(QgsFeatureRequest.NoGeometry)
         for feature in layer.getFeatures(request):
             return feature
         return None
@@ -949,21 +995,21 @@ class QgisMCPServer(QObject):
         **kwargs,
     ):
         """Trace a river network downstream from a point"""
-        layer = self._require_vector(self._find_layer_by_name(layer_name), layer_name)
+        layer = self._require_vector(self._resolve_layer(layer_name), layer_name)
         self._field_index(layer, id_field)
         self._field_index(layer, next_down_field)
 
-        start_point = QgsPointXY(start_lon, start_lat)
-        wgs84 = self._wgs84_crs()
-        if layer.crs() != wgs84:
-            xform = QgsCoordinateTransform(wgs84, layer.crs(), QgsProject.instance())
-            start_point = xform.transform(start_point)
+        start_point = self._point_from_wgs84(QgsPointXY(start_lon, start_lat), layer.crs())
 
-        current_id = self._nearest_feature(layer, start_point).attribute(id_field)
+        segment = self._nearest_feature(layer, start_point)
 
         traced_ids = []
+        traced = []
         visited = set()
-        while current_id is not None and current_id != NULL and current_id not in visited:
+        while segment is not None:
+            current_id = segment.attribute(id_field)
+            if current_id is None or current_id == NULL or current_id in visited:
+                break
             if len(traced_ids) >= self.MAX_TRACE_SEGMENTS:
                 raise Exception(
                     f"The trace passed {self.MAX_TRACE_SEGMENTS} segments. "
@@ -971,23 +1017,15 @@ class QgisMCPServer(QObject):
                 )
             visited.add(current_id)
             traced_ids.append(current_id)
-            segment = self._feature_by_field_value(layer, id_field, current_id)
-            if segment is None:
-                break
+            traced.append(segment)
+
             next_id = segment.attribute(next_down_field)
             if next_id is None or next_id == NULL or next_id == 0:
                 break
-            current_id = next_id
+            segment = self._feature_by_field_value(layer, id_field, next_id)
             self._pump_ui()
 
         mem_layer = self._create_wgs84_memory_layer(layer, output_name)
-        traced = (
-            found
-            for found in (
-                self._feature_by_field_value(layer, id_field, seg_id, with_geometry=True) for seg_id in traced_ids
-            )
-            if found is not None
-        )
         written = self._copy_features_to(mem_layer, layer, traced)
         QgsProject.instance().addMapLayer(mem_layer)
 
@@ -1000,7 +1038,7 @@ class QgisMCPServer(QObject):
 
     def set_layer_visibility(self, layer_name, visible, **kwargs):
         """Set layer visibility"""
-        layer = self._find_layer_by_name(layer_name)
+        layer = self._resolve_layer(layer_name)
         project = QgsProject.instance()
         tree_node = project.layerTreeRoot().findLayer(layer.id())
         if tree_node is None:
@@ -1014,21 +1052,13 @@ class QgisMCPServer(QObject):
 
     def set_canvas_extent(self, xmin, ymin, xmax, ymax, **kwargs):
         """Set the map canvas extent from WGS84 coordinates"""
-        wgs84 = self._wgs84_crs()
-        project_crs = QgsProject.instance().crs()
-        rect = QgsRectangle(xmin, ymin, xmax, ymax)
-
-        if project_crs != wgs84:
-            xform = QgsCoordinateTransform(wgs84, project_crs, QgsProject.instance())
-            rect = xform.transformBoundingBox(rect)
+        rect = self._rect_from_wgs84(QgsRectangle(xmin, ymin, xmax, ymax), QgsProject.instance().crs())
 
         self.iface.mapCanvas().setExtent(rect)
         self.iface.mapCanvas().refresh()
         return {
             "extent": {"xmin": xmin, "ymin": ymin, "xmax": xmax, "ymax": ymax},
         }
-
-    # Phase 3: Styling Tools
 
     def style_line_graduated(
         self, layer_name, width_field, color="#1a5276", min_width=0.3, max_width=3.5, num_classes=0, **kwargs
@@ -1038,7 +1068,7 @@ class QgisMCPServer(QObject):
         The provider supplies the minimum and the maximum, so the whole layer is
         never read into Python. The classes are equal intervals.
         """
-        layer = self._require_vector(self._find_layer_by_name(layer_name), layer_name)
+        layer = self._require_vector(self._resolve_layer(layer_name), layer_name)
         field_idx = self._field_index(layer, width_field)
 
         try:
@@ -1052,7 +1082,6 @@ class QgisMCPServer(QObject):
 
         num_classes = int(num_classes) if int(num_classes) > 0 else self.DEFAULT_GRADUATED_CLASSES
 
-        # Create ranges with interpolated widths
         ranges = []
         step = (max_val - min_val) / num_classes
         width_step = (max_width - min_width) / num_classes
@@ -1088,37 +1117,8 @@ class QgisMCPServer(QObject):
 
     def style_simple(self, layer_name, color="#333333", outline_color="#000000", width=0.5, opacity=1.0, **kwargs):
         """Apply simple single-symbol styling"""
-        layer = self._require_vector(self._find_layer_by_name(layer_name), layer_name)
-        geom_type = layer.geometryType()
-
-        if geom_type == QgsWkbTypes.LineGeometry:
-            symbol = QgsLineSymbol.createSimple(
-                {
-                    "color": color,
-                    "width": str(width),
-                    "capstyle": "round",
-                    "joinstyle": "round",
-                }
-            )
-        elif geom_type == QgsWkbTypes.PolygonGeometry:
-            symbol = QgsFillSymbol.createSimple(
-                {
-                    "color": color,
-                    "outline_color": outline_color,
-                    "outline_width": str(width),
-                }
-            )
-        elif geom_type == QgsWkbTypes.PointGeometry:
-            symbol = QgsMarkerSymbol.createSimple(
-                {
-                    "color": color,
-                    "outline_color": outline_color,
-                    "outline_width": str(width),
-                    "size": "3",
-                }
-            )
-        else:
-            raise Exception("Unsupported geometry type for styling")
+        layer = self._require_vector(self._resolve_layer(layer_name), layer_name)
+        symbol = self._symbol_for(layer, color, outline_color=outline_color, width=width)
 
         from qgis.core import QgsSingleSymbolRenderer
 
@@ -1135,14 +1135,13 @@ class QgisMCPServer(QObject):
 
     def style_categorized(self, layer_name, field_name, color_ramp="Spectral", width=1.0, **kwargs):
         """Apply categorized styling using a color ramp"""
-        layer = self._require_vector(self._find_layer_by_name(layer_name), layer_name)
+        layer = self._require_vector(self._resolve_layer(layer_name), layer_name)
         field_idx = self._field_index(layer, field_name)
 
         unique_values = self._sorted_unique_values(layer, field_idx)
         if not unique_values:
             raise Exception(f"Field '{field_name}' holds no values, so it cannot be categorized.")
 
-        # Get color ramp from style
         style = QgsApplication.instance().styleManager() if hasattr(QgsApplication, "styleManager") else None
         ramp = None
         if style:
@@ -1152,40 +1151,13 @@ class QgisMCPServer(QObject):
 
             ramp = QgsGradientColorRamp(QColor("#d73027"), QColor("#1a9850"))
 
-        # Create categories
         categories = []
         num_values = len(unique_values)
-        geom_type = layer.geometryType()
 
-        for i, val in enumerate(unique_values):
-            ratio = i / max(num_values - 1, 1)
-            cat_color = ramp.color(ratio)
-
-            if geom_type == QgsWkbTypes.LineGeometry:
-                symbol = QgsLineSymbol.createSimple(
-                    {
-                        "color": cat_color.name(),
-                        "width": str(width),
-                    }
-                )
-            elif geom_type == QgsWkbTypes.PolygonGeometry:
-                symbol = QgsFillSymbol.createSimple(
-                    {
-                        "color": cat_color.name(),
-                        "outline_color": "#333333",
-                        "outline_width": "0.26",
-                    }
-                )
-            else:
-                symbol = QgsMarkerSymbol.createSimple(
-                    {
-                        "color": cat_color.name(),
-                        "size": "3",
-                    }
-                )
-
-            category = QgsRendererCategory(val, symbol, str(val))
-            categories.append(category)
+        for index, value in enumerate(unique_values):
+            category_color = ramp.color(index / max(num_values - 1, 1)).name()
+            symbol = self._symbol_for(layer, category_color, outline_color="#333333", width=width)
+            categories.append(QgsRendererCategory(value, symbol, str(value)))
 
         renderer = QgsCategorizedSymbolRenderer(field_name, categories)
         layer.setRenderer(renderer)
@@ -1210,7 +1182,7 @@ class QgisMCPServer(QObject):
         **kwargs,
     ):
         """Add labels to a layer"""
-        layer = self._require_vector(self._find_layer_by_name(layer_name), layer_name)
+        layer = self._require_vector(self._resolve_layer(layer_name), layer_name)
         self._field_index(layer, field_name)
 
         # Configure text format
@@ -1247,8 +1219,6 @@ class QgisMCPServer(QObject):
             "font_size": font_size,
             "follow_line": follow_line,
         }
-
-    # Phase 4: Print Layout & Cartography
 
     def _get_page_dimensions(self, page_size, orientation):
         """Return (width_mm, height_mm) for a given page size and orientation."""
@@ -1441,20 +1411,14 @@ class QgisMCPServer(QObject):
         inset.attemptResize(QgsLayoutSize(size[0], size[1], QgsUnitTypes.LayoutMillimeters))
 
         # Set extent (reproject from WGS84 if needed)
-        inset_rect = QgsRectangle(extent[0], extent[1], extent[2], extent[3])
-        wgs84 = self._wgs84_crs()
-        project_crs = project.crs()
-        if project_crs != wgs84:
-            xform = QgsCoordinateTransform(wgs84, project_crs, project)
-            inset_rect = xform.transformBoundingBox(inset_rect)
-        inset.setExtent(inset_rect)
+        inset.setExtent(self._rect_from_wgs84(QgsRectangle(*extent), project.crs()))
 
         # Filter layers if specified
         if layers:
             layer_objects = []
             for lname in layers:
                 with contextlib.suppress(Exception):
-                    layer_objects.append(self._find_layer_by_name(lname))
+                    layer_objects.append(self._resolve_layer(lname))
             if layer_objects:
                 inset.setLayers(layer_objects)
                 inset.setKeepLayerSet(True)
@@ -1548,7 +1512,7 @@ class QgisMCPServer(QObject):
         """Read one page of features from a vector layer, by its name or its id"""
         found = self._resolve_layer(layer)
         self._require_vector(found, layer)
-        return self._feature_page(found, found.name(), limit, offset)
+        return self._feature_page(found, limit, offset)
 
     def _describe_processing_output(self, value):
         """Return a processing output that a later tool can use.

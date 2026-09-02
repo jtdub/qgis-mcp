@@ -15,7 +15,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
 from functools import partial
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, TypeVar, cast
 
 import anyio.to_thread
 from mcp.server.fastmcp import Context, FastMCP
@@ -44,6 +44,9 @@ UNAUTHENTICATED = "unauthenticated"
 
 PROTOCOL_VERSION = 1
 """Wire protocol this server speaks. The plugin must report the same number."""
+
+_Result = TypeVar("_Result")
+"""The output model a tool declares."""
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 9876
@@ -111,7 +114,6 @@ class QgisMCPServer:
         self.port = port
         self.token = token
         self.socket: socket.socket | None = None
-        self.plugin_info: dict[str, Any] = {}
         self._buffer = b""
 
     def connect(self):
@@ -201,12 +203,11 @@ class QgisMCPServer:
             if timeout is not None and self.socket:
                 self.socket.settimeout(self.DEFAULT_TIMEOUT)
 
-    def send_command(self, command_type, params=None, timeout=None):
+    def send_command(self, command_type, params=None, timeout=None, request_id=None):
         """Send a command to the server and get the response.
 
-        The command carries a request id. A retry after a lost connection reuses
-        that id, so the plugin answers from its cache instead of running a write
-        for a second time.
+        Pass the same request_id on a retry. The plugin answers from its cache,
+        so a write never runs a second time.
         """
         if not self.is_open() and not self._reconnect():
             raise Exception(
@@ -214,7 +215,7 @@ class QgisMCPServer:
             )
 
         command = {
-            "id": uuid.uuid4().hex,
+            "id": request_id or uuid.uuid4().hex,
             "protocol": PROTOCOL_VERSION,
             "type": command_type,
             "params": params or {},
@@ -244,23 +245,24 @@ _connection_lock = threading.Lock()
 """Serializes access to the shared socket. Async tools can overlap on worker threads."""
 
 
-def _handshake(connection):
-    """Ask the plugin what it is, and refuse a plugin that speaks another protocol.
+def _check_protocol(connection):
+    """Refuse a plugin that speaks another protocol.
+
+    A rejected token is not a protocol problem, so it passes. The caller retries
+    with a fresh token.
 
     Raises:
         ToolError: If the plugin reports a different protocol version.
     """
     response = connection.send_command("ping")
     if response.get("status") != "success":
-        return {}
-    info = response.get("result") or {}
-    remote = info.get("protocol")
+        return
+    remote = (response.get("result") or {}).get("protocol")
     if remote != PROTOCOL_VERSION:
         raise ToolError(
             f"The QGIS MCP plugin speaks protocol {remote!r} and this server speaks {PROTOCOL_VERSION}. "
             "Copy the current qgis_mcp_plugin folder into your QGIS profile, then restart QGIS."
         )
-    return info
 
 
 def get_qgis_connection():
@@ -285,7 +287,7 @@ def get_qgis_connection():
     if not token:
         logger.warning("No token found. Set QGIS_MCP_TOKEN to the token shown in the QGIS MCP dock.")
     try:
-        connection.plugin_info = _handshake(connection)
+        _check_protocol(connection)
     except Exception:
         connection.disconnect()
         raise
@@ -302,6 +304,11 @@ def _reset_connection():
         _qgis_connection = None
 
 
+def _encode(result: Any) -> str:
+    """Return a result as compact JSON."""
+    return json.dumps(result, separators=(",", ":"))
+
+
 def _send(command: str, params: dict[str, Any] | None = None) -> Any:
     """Send a command to QGIS and return its result payload.
 
@@ -312,12 +319,13 @@ def _send(command: str, params: dict[str, Any] | None = None) -> Any:
         ToolError: If QGIS reports an error for the command.
     """
     supplied = {key: value for key, value in (params or {}).items() if value is not None}
+    request_id = uuid.uuid4().hex
     with _connection_lock:
-        response = get_qgis_connection().send_command(command, supplied)
+        response = get_qgis_connection().send_command(command, supplied, request_id=request_id)
         if response.get("code") == UNAUTHENTICATED:
             logger.warning("The token was rejected. Reading the session again and retrying once.")
             _reset_connection()
-            response = get_qgis_connection().send_command(command, supplied)
+            response = get_qgis_connection().send_command(command, supplied, request_id=request_id)
     if response.get("status") == "error":
         raise ToolError(response.get("message") or f"QGIS reported an error for '{command}'")
     return response.get("result")
@@ -332,12 +340,23 @@ async def _run(command: str, params: dict[str, Any] | None = None) -> Any:
     return await anyio.to_thread.run_sync(partial(_send, command, params))
 
 
+async def _run_as(  # pylint: disable=unused-argument
+    model: type[_Result], command: str, params: dict[str, Any] | None = None
+) -> _Result:
+    """Send a command to QGIS and return its result as the named model.
+
+    The socket carries untyped JSON, so the model is asserted once here instead
+    of at every tool. The model names the return type; it is not read.
+    """
+    return cast(_Result, await _run(command, params))
+
+
 async def _run_json(command: str, params: dict[str, Any] | None = None) -> str:
     """Send a command to QGIS and return its result as compact JSON."""
-    return json.dumps(await _run(command, params), separators=(",", ":"))
+    return _encode(await _run(command, params))
 
 
-async def _run_watched(ctx: Context, note: str, command: str, params: dict[str, Any] | None = None) -> Any:
+async def _run_watched(ctx: Context, note: str, command: str, params: dict[str, Any] | None = None) -> str:
     """Send a slow command, and tell the client that it started and finished.
 
     QGIS answers only once, so the progress goes from nothing to complete. The
@@ -347,24 +366,11 @@ async def _run_watched(ctx: Context, note: str, command: str, params: dict[str, 
     await ctx.report_progress(0, 1)
     result = await _run(command, params)
     await ctx.report_progress(1, 1)
-    return result
-
-
-async def _plugin_info() -> dict[str, Any]:
-    """Return what the plugin reports about itself, read fresh.
-
-    The user can change the execute_code setting at any time, so the cached
-    handshake is not trusted for that flag.
-    """
-    info: dict[str, Any] = await _run("ping")
-    with _connection_lock:
-        if _qgis_connection is not None:
-            _qgis_connection.plugin_info = info
-    return info
+    return _encode(result)
 
 
 @asynccontextmanager
-async def server_lifespan(server: FastMCP) -> AsyncIterator[dict[str, Any]]:
+async def server_lifespan(server: FastMCP) -> AsyncIterator[dict[str, Any]]:  # pylint: disable=unused-argument
     """Manage server startup and shutdown lifecycle.
 
     The startup probe runs on a worker thread. The socket connect and the
@@ -380,10 +386,8 @@ async def server_lifespan(server: FastMCP) -> AsyncIterator[dict[str, Any]]:
             logger.warning(f"Could not connect to Qgis on startup: {str(e)}")
             logger.warning("Make sure the Qgis addon is running before using Qgis resources or tools")
 
-        # Return an empty context - we're using the global connection
         yield {}
     finally:
-        # Clean up the global connection on shutdown
         global _qgis_connection
         if _qgis_connection:
             logger.info("Disconnecting from Qgis on shutdown")
@@ -420,86 +424,86 @@ mcp = FastMCP(
 
 
 @mcp.tool(annotations=_annotate("Ping QGIS", read_only=True, idempotent=True))
-async def ping(ctx: Context) -> PluginInfo:
+async def ping() -> PluginInfo:
     """Check that QGIS answers, and report the plugin and protocol versions."""
-    return cast(PluginInfo, await _run("ping"))
+    return await _run_as(PluginInfo, "ping")
 
 
 @mcp.tool(annotations=_annotate("Get QGIS Info", read_only=True, idempotent=True))
-async def get_qgis_info(ctx: Context) -> QgisInfo:
+async def get_qgis_info() -> QgisInfo:
     """Get QGIS information"""
-    return cast(QgisInfo, await _run("get_qgis_info"))
+    return await _run_as(QgisInfo, "get_qgis_info")
 
 
 @mcp.tool(annotations=_annotate("Load Project", destructive=True, idempotent=True, open_world=True))
-async def load_project(ctx: Context, path: str) -> str:
+async def load_project(path: str) -> str:
     """Load a QGIS project from the specified path."""
     return await _run_json("load_project", {"path": path})
 
 
 @mcp.tool(annotations=_annotate("Create New Project", destructive=True, idempotent=True, open_world=True))
-async def create_new_project(ctx: Context, path: str) -> str:
+async def create_new_project(path: str) -> str:
     """Create a new project and save it."""
     return await _run_json("create_new_project", {"path": path})
 
 
 @mcp.tool(annotations=_annotate("Get Project Info", read_only=True, idempotent=True))
-async def get_project_info(ctx: Context) -> ProjectSummary:
+async def get_project_info() -> ProjectSummary:
     """Get current project information"""
-    return cast(ProjectSummary, await _run("get_project_info"))
+    return await _run_as(ProjectSummary, "get_project_info")
 
 
 @mcp.tool(annotations=_annotate("Add Vector Layer", open_world=True))
-async def add_vector_layer(ctx: Context, path: str, provider: str = "ogr", name: str | None = None) -> LayerRef:
+async def add_vector_layer(path: str, provider: str = "ogr", name: str | None = None) -> LayerRef:
     """Add a vector layer to the project."""
-    return cast(LayerRef, await _run("add_vector_layer", {"path": path, "provider": provider, "name": name}))
+    return await _run_as(LayerRef, "add_vector_layer", {"path": path, "provider": provider, "name": name})
 
 
 @mcp.tool(annotations=_annotate("Add Raster Layer", open_world=True))
-async def add_raster_layer(ctx: Context, path: str, provider: str = "gdal", name: str | None = None) -> LayerRef:
+async def add_raster_layer(path: str, provider: str = "gdal", name: str | None = None) -> LayerRef:
     """Add a raster layer to the project."""
-    return cast(LayerRef, await _run("add_raster_layer", {"path": path, "provider": provider, "name": name}))
+    return await _run_as(LayerRef, "add_raster_layer", {"path": path, "provider": provider, "name": name})
 
 
 @mcp.tool(annotations=_annotate("List Layers", read_only=True, idempotent=True))
-async def list_layers(ctx: Context) -> list[LayerInfo]:
+async def list_layers() -> list[LayerInfo]:
     """List all layers with rich metadata including CRS, fields, geometry type, and feature count.
 
     Returns an array of layer objects. Vector layers include field definitions.
     Raster layers include band count, dimensions, and pixel size.
     """
-    return cast(list[LayerInfo], await _run("list_layers"))
+    return await _run_as(list[LayerInfo], "list_layers")
 
 
 @mcp.tool(annotations=_annotate("Remove Layer", destructive=True))
-async def remove_layer(ctx: Context, layer: str) -> str:
+async def remove_layer(layer: str) -> str:
     """Remove a layer from the project by its name or its id."""
     return await _run_json("remove_layer", {"layer": layer})
 
 
 @mcp.tool(annotations=_annotate("Zoom To Layer", idempotent=True))
-async def zoom_to_layer(ctx: Context, layer: str) -> str:
+async def zoom_to_layer(layer: str) -> str:
     """Zoom to the extent of a layer, named by its name or its id."""
     return await _run_json("zoom_to_layer", {"layer": layer})
 
 
 @mcp.tool(annotations=_annotate("Get Layer Features", read_only=True, idempotent=True))
-async def get_layer_features(ctx: Context, layer: str, limit: int = 10, offset: int = 0) -> FeatureSample:
+async def get_layer_features(layer: str, limit: int = 10, offset: int = 0) -> FeatureSample:
     """Read one page of features from a vector layer.
 
     The layer is named by its name or its id. Read the next page with offset.
     """
-    return cast(FeatureSample, await _run("get_layer_features", {"layer": layer, "limit": limit, "offset": offset}))
+    return await _run_as(FeatureSample, "get_layer_features", {"layer": layer, "limit": limit, "offset": offset})
 
 
 @mcp.tool(annotations=_annotate("Execute Processing", destructive=True, open_world=True))
-async def execute_processing(ctx: Context, algorithm: str, parameters: dict) -> str:
+async def execute_processing(algorithm: str, parameters: dict) -> str:
     """Execute a processing algorithm with the given parameters."""
     return await _run_json("execute_processing", {"algorithm": algorithm, "parameters": parameters})
 
 
 @mcp.tool(annotations=_annotate("Save Project", destructive=True, idempotent=True, open_world=True))
-async def save_project(ctx: Context, path: str | None = None) -> str:
+async def save_project(path: str | None = None) -> str:
     """Save the current project to the given path, or to the current project path if not specified."""
     return await _run_json("save_project", {"path": path})
 
@@ -507,17 +511,16 @@ async def save_project(ctx: Context, path: str | None = None) -> str:
 @mcp.tool(annotations=_annotate("Render Map", destructive=True, idempotent=True, open_world=True))
 async def render_map(ctx: Context, path: str, width: int = 800, height: int = 600) -> str:
     """Render the current map view to an image file with the specified dimensions."""
-    result = await _run_watched(
+    return await _run_watched(
         ctx,
         f"Rendering the canvas to {path} at {width}x{height}.",
         "render_map",
         {"path": path, "width": width, "height": height},
     )
-    return json.dumps(result, separators=(",", ":"))
 
 
 @mcp.tool(annotations=_annotate("Execute PyQGIS Code", destructive=True, open_world=True))
-async def execute_code(ctx: Context, code: str) -> str:
+async def execute_code(code: str) -> str:
     """Execute arbitrary PyQGIS code provided as a string.
 
     WARNING: This runs unrestricted Python inside the QGIS process. Prefer a
@@ -529,10 +532,6 @@ async def execute_code(ctx: Context, code: str) -> str:
     Raises:
         ToolError: If the code raises, or if the QGIS dock does not allow it.
     """
-    if (await _plugin_info()).get("execute_code_enabled") is False:
-        raise ToolError(
-            "execute_code is disabled. Tick 'Allow execute_code' in the QGIS MCP dock, then call this tool again."
-        )
     result = await _run("execute_code", {"code": code})
     if isinstance(result, dict) and result.get("executed") is False:
         raise ToolError(result.get("traceback") or result.get("error") or "The PyQGIS code failed.")
@@ -543,62 +542,56 @@ async def execute_code(ctx: Context, code: str) -> str:
 
 
 @mcp.tool(annotations=_annotate("Get Layer Fields", read_only=True, idempotent=True))
-async def get_layer_fields(ctx: Context, layer_name: str) -> FieldList:
+async def get_layer_fields(layer_name: str) -> FieldList:
     """Get detailed field information for a vector layer.
 
     Returns field name, type, length, precision, and comment for each field.
     """
-    return cast(FieldList, await _run("get_layer_fields", {"layer_name": layer_name}))
+    return await _run_as(FieldList, "get_layer_fields", {"layer_name": layer_name})
 
 
 @mcp.tool(annotations=_annotate("Get Unique Values", read_only=True, idempotent=True))
-async def get_unique_values(
-    ctx: Context, layer_name: str, field_name: str, limit: int = 50, offset: int = 0
-) -> UniqueValues:
+async def get_unique_values(layer_name: str, field_name: str, limit: int = 50, offset: int = 0) -> UniqueValues:
     """Read one page of the distinct values a field holds.
 
     The values are sorted. total_count is the size of the whole set, and
     has_more says whether another page follows. Read that page with offset.
     """
-    return cast(
+    return await _run_as(
         UniqueValues,
-        await _run(
-            "get_unique_values",
-            {
-                "layer_name": layer_name,
-                "field_name": field_name,
-                "limit": limit,
-                "offset": offset,
-            },
-        ),
+        "get_unique_values",
+        {
+            "layer_name": layer_name,
+            "field_name": field_name,
+            "limit": limit,
+            "offset": offset,
+        },
     )
 
 
 @mcp.tool(annotations=_annotate("Sample Features", read_only=True, idempotent=True))
 async def sample_features(
-    ctx: Context, layer_name: str, count: int = 5, expression: str | None = None, offset: int = 0
+    layer_name: str, count: int = 5, expression: str | None = None, offset: int = 0
 ) -> FeatureSample:
     """Sample features from a vector layer with optional expression filter.
 
     Returns feature attributes and truncated WKT geometry in WGS84.
     Use expression parameter to filter (e.g., \"name\" = 'Vilcanota').
     """
-    return cast(
+    return await _run_as(
         FeatureSample,
-        await _run(
-            "sample_features",
-            {"layer_name": layer_name, "count": count, "expression": expression, "offset": offset},
-        ),
+        "sample_features",
+        {"layer_name": layer_name, "count": count, "expression": expression, "offset": offset},
     )
 
 
 @mcp.tool(annotations=_annotate("Get Layer Extent", read_only=True, idempotent=True))
-async def get_layer_extent(ctx: Context, layer_name: str) -> Extent:
+async def get_layer_extent(layer_name: str) -> Extent:
     """Get a layer's bounding box in WGS84 coordinates.
 
     Returns xmin, ymin, xmax, ymax of the layer extent.
     """
-    return cast(Extent, await _run("get_layer_extent", {"layer_name": layer_name}))
+    return await _run_as(Extent, "get_layer_extent", {"layer_name": layer_name})
 
 
 # Phase 2: Filtering & Spatial Operations
@@ -611,7 +604,7 @@ async def filter_layer(ctx: Context, layer_name: str, expression: str, output_na
     Examples: "name" IN ('Vilcanota', 'Urubamba'), "population" > 10000
     The output layer is created in WGS84 and added to the project.
     """
-    result = await _run_watched(
+    return await _run_watched(
         ctx,
         f"Filtering '{layer_name}' into '{output_name}'.",
         "filter_layer",
@@ -621,7 +614,6 @@ async def filter_layer(ctx: Context, layer_name: str, expression: str, output_na
             "output_name": output_name,
         },
     )
-    return json.dumps(result, separators=(",", ":"))
 
 
 @mcp.tool(annotations=_annotate("Trace Downstream"))
@@ -639,7 +631,7 @@ async def trace_downstream(
     Follows the network topology using id_field and next_down_field pointers.
     Compatible with HydroSHEDS/HydroRIVERS data. Creates an output memory layer.
     """
-    result = await _run_watched(
+    return await _run_watched(
         ctx,
         f"Tracing '{layer_name}' downstream from {start_lon}, {start_lat}.",
         "trace_downstream",
@@ -652,11 +644,10 @@ async def trace_downstream(
             "output_name": output_name,
         },
     )
-    return json.dumps(result, separators=(",", ":"))
 
 
 @mcp.tool(annotations=_annotate("Set Layer Visibility", idempotent=True))
-async def set_layer_visibility(ctx: Context, layer_name: str, visible: bool) -> str:
+async def set_layer_visibility(layer_name: str, visible: bool) -> str:
     """Toggle layer visibility in the layer tree."""
     return await _run_json(
         "set_layer_visibility",
@@ -668,7 +659,7 @@ async def set_layer_visibility(ctx: Context, layer_name: str, visible: bool) -> 
 
 
 @mcp.tool(annotations=_annotate("Set Canvas Extent", idempotent=True))
-async def set_canvas_extent(ctx: Context, xmin: float, ymin: float, xmax: float, ymax: float) -> str:
+async def set_canvas_extent(xmin: float, ymin: float, xmax: float, ymax: float) -> str:
     """Set the map canvas extent using WGS84 coordinates.
 
     Automatically reprojects to the project CRS.
@@ -689,7 +680,6 @@ async def set_canvas_extent(ctx: Context, xmin: float, ymin: float, xmax: float,
 
 @mcp.tool(annotations=_annotate("Style Line Graduated", idempotent=True))
 async def style_line_graduated(
-    ctx: Context,
     layer_name: str,
     width_field: str,
     color: str = "#1a5276",
@@ -716,7 +706,6 @@ async def style_line_graduated(
 
 @mcp.tool(annotations=_annotate("Style Simple", idempotent=True))
 async def style_simple(
-    ctx: Context,
     layer_name: str,
     color: str = "#333333",
     outline_color: str = "#000000",
@@ -741,9 +730,7 @@ async def style_simple(
 
 
 @mcp.tool(annotations=_annotate("Style Categorized", idempotent=True))
-async def style_categorized(
-    ctx: Context, layer_name: str, field_name: str, color_ramp: str = "Spectral", width: float = 1.0
-) -> str:
+async def style_categorized(layer_name: str, field_name: str, color_ramp: str = "Spectral", width: float = 1.0) -> str:
     """Apply categorized styling using unique field values and a color ramp.
 
     Each unique value gets a distinct color from the ramp.
@@ -761,7 +748,6 @@ async def style_categorized(
 
 @mcp.tool(annotations=_annotate("Add Labels", idempotent=True))
 async def add_labels(
-    ctx: Context,
     layer_name: str,
     field_name: str,
     font_size: float = 10,
@@ -794,7 +780,6 @@ async def add_labels(
 
 @mcp.tool(annotations=_annotate("Create Print Layout"))
 async def create_print_layout(
-    ctx: Context,
     name: str,
     page_size: str = "A3",
     orientation: str = "landscape",
@@ -807,18 +792,15 @@ async def create_print_layout(
     The main map item is set to the current canvas extent.
     Set replace to true to overwrite a layout that already has this name.
     """
-    return cast(
+    return await _run_as(
         LayoutInfo,
-        await _run(
-            "create_print_layout",
-            {"name": name, "page_size": page_size, "orientation": orientation, "title": title, "replace": replace},
-        ),
+        "create_print_layout",
+        {"name": name, "page_size": page_size, "orientation": orientation, "title": title, "replace": replace},
     )
 
 
 @mcp.tool(annotations=_annotate("Add Legend"))
 async def add_legend(
-    ctx: Context,
     layout_name: str,
     title: str = "Legend",
     position: list[Any] | None = None,
@@ -845,7 +827,6 @@ async def add_legend(
 
 @mcp.tool(annotations=_annotate("Add Inset Map"))
 async def add_inset_map(
-    ctx: Context,
     layout_name: str,
     extent: list[Any],
     position: list[Any] | None = None,
@@ -877,7 +858,7 @@ async def export_layout(ctx: Context, layout_name: str, output_path: str, dpi: i
 
     File extension determines format: .pdf for PDF, .png/.jpg for images.
     """
-    result = await _run_watched(
+    return await _run_watched(
         ctx,
         f"Exporting the layout '{layout_name}' to {output_path} at {dpi} dpi.",
         "export_layout",
@@ -887,7 +868,6 @@ async def export_layout(ctx: Context, layout_name: str, output_path: str, dpi: i
             "dpi": dpi,
         },
     )
-    return json.dumps(result, separators=(",", ":"))
 
 
 def main():

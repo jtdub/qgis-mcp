@@ -25,15 +25,15 @@ def _point_proj_at_its_database():
 
     A macOS QGIS bundle keeps proj.db inside the application. Without this,
     every CRS resolves to nothing and the coordinate tests fail for the wrong
-    reason. A Linux install needs no help.
+    reason. The path comes from the running interpreter, so it always belongs
+    to the same bundle. A Linux install needs no help.
     """
     if os.environ.get("PROJ_LIB") or os.environ.get("PROJ_DATA"):
         return
-    for candidate in Path("/Applications").glob("QGIS*.app/Contents/Resources/proj"):
-        if (candidate / "proj.db").exists():
-            os.environ["PROJ_LIB"] = str(candidate)
-            os.environ["PROJ_DATA"] = str(candidate)
-            return
+    candidate = Path(sys.prefix).parent / "Resources" / "proj"
+    if (candidate / "proj.db").exists():
+        os.environ["PROJ_LIB"] = str(candidate)
+        os.environ["PROJ_DATA"] = str(candidate)
 
 
 _point_proj_at_its_database()
@@ -49,6 +49,9 @@ collect_ignore_glob = [] if QGIS_IS_AVAILABLE else ["test_*.py"]
 
 TOKEN = "integration-token"
 """Token every request in this suite carries."""
+
+POLL_SECONDS = 0.005
+"""Pause between two hand-driven polls. The plugin's own timer runs at 20 ms."""
 
 
 def free_port():
@@ -94,6 +97,40 @@ def plugin(iface):
     from qgis_mcp_plugin.qgis_mcp_plugin import QgisMCPServer
 
     return QgisMCPServer(iface=iface, token=TOKEN)
+
+
+@pytest.fixture
+def plugin_with_code(iface):
+    """Return a plugin server that allows execute_code."""
+    from qgis_mcp_plugin.qgis_mcp_plugin import QgisMCPServer
+
+    return QgisMCPServer(iface=iface, token=TOKEN, allow_execute_code=True)
+
+
+@pytest.fixture
+def listening(iface, tmp_path, monkeypatch):
+    """Start a plugin on a free port, with its poll under the test's control.
+
+    The QTimer is stopped, so each test decides when the server reads.
+    """
+    from qgis.core import QgsApplication
+
+    from qgis_mcp_plugin.qgis_mcp_plugin import QgisMCPServer
+
+    monkeypatch.setattr(QgsApplication, "qgisSettingsDirPath", staticmethod(lambda: str(tmp_path)))
+
+    server = QgisMCPServer(iface=iface, port=free_port(), token=TOKEN)
+    assert server.start() is True
+    server.timer.stop()
+    yield server
+    server.stop()
+
+
+def layers_named(name):
+    """Return every project layer that carries this name."""
+    from qgis.core import QgsProject
+
+    return QgsProject.instance().mapLayersByName(name)
 
 
 def add_layer(layer):

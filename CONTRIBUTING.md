@@ -141,7 +141,7 @@ Every new tool requires changes in **both** the plugin and the MCP server:
 2. **MCP server** (`src/qgis_mcp/qgis_mcp_server.py`): add an `@mcp.tool()` function that calls `qgis.send_command("my_tool", {params})`
 3. **Docs**: update [tools.md](tools.md) with parameters and return values
 
-All coordinate I/O uses **WGS84 (EPSG:4326)**. Use `_find_layer_by_name()` for layer lookup by name.
+All coordinate I/O uses **WGS84 (EPSG:4326)**. Use `_resolve_layer()` for layer lookup. It accepts a layer name or a layer id.
 
 ## Contributing Guidelines
 

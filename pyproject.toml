@@ -60,6 +60,7 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "qgis_mcp_plugin/*" = [
     "E402",   # module level import not at top
+    "B905",   # zip strict= needs 3.10; this file runs on the Python inside QGIS
 ]
 "tests/test_plugin_helpers.py" = [
     "E402",   # imports after sys.modules mocking
@@ -86,7 +87,6 @@ disable = [
     "R0913",  # too-many-arguments
     "R0914",  # too-many-locals
     "W0603",  # global-statement
-    "W0613",  # unused-argument (ctx required by MCP framework)
     "W0707",  # raise-missing-from (handled by ruff B904)
     "W0718",  # broad-exception-caught
     "W0719",  # broad-exception-raised

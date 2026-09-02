@@ -13,7 +13,7 @@ import contextlib
 import sys
 
 import pytest
-from conftest import TOKEN, free_port
+from conftest import POLL_SECONDS, TOKEN
 
 if sys.version_info < (3, 10):  # pragma: no cover
     pytest.skip("The MCP server needs Python 3.10 or newer.", allow_module_level=True)
@@ -24,32 +24,19 @@ pytest.importorskip("pytest_asyncio", reason="These tests need pytest-asyncio.")
 from mcp.shared.memory import create_connected_server_and_client_session  # noqa: E402
 
 import qgis_mcp.qgis_mcp_server as server_module  # noqa: E402
-from qgis_mcp_plugin.qgis_mcp_plugin import QgisMCPServer as PluginServer  # noqa: E402
-
-POLL_SECONDS = 0.005
-"""Pause between two polls of the plugin, while a tool call is in flight."""
 
 
 @pytest.fixture
-def bridge(iface, tmp_path, monkeypatch):
-    """Start a plugin, and point the MCP server's session lookup at it."""
-    from qgis.core import QgsApplication
-
-    monkeypatch.setattr(QgsApplication, "qgisSettingsDirPath", staticmethod(lambda: str(tmp_path)))
-
-    plugin = PluginServer(iface=iface, port=free_port(), token=TOKEN)
-    assert plugin.start() is True
-    plugin.timer.stop()
-
+def bridge(listening, monkeypatch):
+    """Point the MCP server's session lookup at the running plugin."""
     monkeypatch.setenv("QGIS_MCP_HOST", "127.0.0.1")
-    monkeypatch.setenv("QGIS_MCP_PORT", str(plugin.port))
+    monkeypatch.setenv("QGIS_MCP_PORT", str(listening.port))
     monkeypatch.setenv("QGIS_MCP_TOKEN", TOKEN)
     monkeypatch.setattr(server_module, "_qgis_connection", None)
 
-    yield plugin
+    yield listening
 
     server_module._reset_connection()
-    plugin.stop()
 
 
 @contextlib.asynccontextmanager

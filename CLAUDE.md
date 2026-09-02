@@ -38,7 +38,7 @@ Runs as a separate Python process managed by `uv`. Contains:
 
 - **`QgisMCPServer`** class — TCP socket client. Newline-framed JSON, a request id on every command, reconnection, and timeout
 - **`get_qgis_connection()`** — module-level singleton managing a persistent connection
-- **31 async `@mcp.tool()` functions** — each awaits `_run()`, which sends the command from a worker thread. Read tools return a `TypedDict` from `models.py`, so FastMCP publishes an output schema
+- **31 async `@mcp.tool()` functions** — a read tool awaits `_run_as(Model, ...)` and returns a `TypedDict` from `models.py`, so FastMCP publishes an output schema. A write tool awaits `_run_json()` and returns compact JSON. Only a tool that reports progress takes `ctx: Context`
 
 ### QGIS Plugin (`qgis_mcp_plugin/qgis_mcp_plugin.py`)
 
@@ -47,7 +47,7 @@ Runs inside QGIS's Python runtime. Contains:
 - **`QgisMCPServer`** (different class, same name) — TCP socket server using `QTimer` polling (20ms), with a 16-entry response cache keyed by request id
 - **`execute_command()`** with `handlers` dict mapping command strings to handler methods
 - **30+ handler methods** calling PyQGIS APIs, organized by phase (introspection, filtering, styling, cartography)
-- **Helpers:** `_resolve_layer()`, `_find_layer_by_name()`, `_feature_page()`, `_copy_features_to()`, `_transform_to_wgs84()`, `_geometry_type_name()`, `_get_page_dimensions()`
+- **Helpers:** `_resolve_layer()`, `_require_vector()`, `_field_index()`, `_feature_page()`, `_copy_features_to()`, `_symbol_for()`, `_transform()`, `_rect_to_wgs84()`, `_find_layout()`, `_main_map_item()`
 - **UI:** `QgisMCPDockWidget`, `QgisMCPPlugin`
 
 ### Protocol
@@ -67,8 +67,8 @@ A repeated `id` is answered from the plugin's cache, so a retry never applies a 
 Every new tool requires changes in **BOTH** files:
 
 1. **Plugin:** add handler method + register in `handlers` dict inside `execute_command()`
-2. **MCP server:** add an `async @mcp.tool()` function that awaits `_run("my_tool", {params})`, or `_run_json` when the result has no fixed shape
-3. If the result has a fixed shape, add a `TypedDict` to `src/qgis_mcp/models.py` and annotate the return with it
+2. **MCP server:** add an `async @mcp.tool()` function. A read tool awaits `_run_as(Model, "my_tool", {params})`; a write tool awaits `_run_json("my_tool", {params})`
+3. For a read tool, add a `TypedDict` to `src/qgis_mcp/models.py` and annotate the return with it. Add `ctx: Context` only when the tool reports progress
 4. Update `tools.md` with parameters and return values, and the tool count in `tests/test_tool_annotations.py`
 
 ## Design Conventions
@@ -79,6 +79,8 @@ Every new tool requires changes in **BOTH** files:
 - Plugin handlers accept `**kwargs` to tolerate extra JSON parameters.
 - A tool must never block the event loop. Every QGIS call goes through `_run()`, which uses `anyio.to_thread`.
 - A list-shaped result carries `offset`, `returned_count`, `total_count`, and `has_more`.
+- A handler that loops calls `_pump_ui()` freely. The helper throttles itself, so no handler picks a rate.
+- Build a `QgsCoordinateTransform` once with `_transform()` and reuse it. Never build one inside a per-feature loop.
 - The plugin file cannot be imported outside QGIS. Only `_get_page_dimensions()` is pure Python.
 
 ## Testing

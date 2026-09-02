@@ -11,23 +11,9 @@ import time
 from pathlib import Path
 
 import pytest
-from conftest import TOKEN, free_port
+from conftest import POLL_SECONDS, TOKEN, layers_named
 
-from qgis_mcp_plugin.qgis_mcp_plugin import PROTOCOL_VERSION, QgisMCPServer
-
-
-@pytest.fixture
-def listening(iface, tmp_path, monkeypatch):
-    """Start a plugin server on a free port, with its own poll under test control."""
-    from qgis.core import QgsApplication
-
-    monkeypatch.setattr(QgsApplication, "qgisSettingsDirPath", staticmethod(lambda: str(tmp_path)))
-
-    server = QgisMCPServer(iface=iface, port=free_port(), token=TOKEN)
-    assert server.start() is True
-    server.timer.stop()
-    yield server
-    server.stop()
+from qgis_mcp_plugin.qgis_mcp_plugin import PROTOCOL_VERSION
 
 
 @pytest.fixture
@@ -51,18 +37,21 @@ def request(cmd_type, params=None, token=TOKEN, request_id="req-1", protocol=PRO
     return json.dumps(payload).encode("utf-8") + b"\n"
 
 
-POLL_SECONDS = 0.005
-"""Pause between two hand-driven polls. The real plugin uses a 20 ms timer."""
-
 DEADLINE_SECONDS = 5.0
 """Longest a test waits for the answers it expects."""
 
 
-def pump(server, seconds=0.2):
-    """Poll the server for a while, the way its timer would."""
-    deadline = time.monotonic() + seconds
+def pump(server, until=None, seconds=1.0):
+    """Poll the server until a condition holds, or until the time runs out.
+
+    Without a condition the poll runs for a short fixed window. That is how a
+    test waits for something that must not happen.
+    """
+    deadline = time.monotonic() + (seconds if until else 0.1)
     while time.monotonic() < deadline:
         server.process_server()
+        if until is not None and until():
+            return
         time.sleep(POLL_SECONDS)
 
 
@@ -180,14 +169,14 @@ class TestFraming:
         payload = request("ping", request_id="split")
 
         client.sendall(payload[:15])
-        pump(listening)
+        pump(listening, until=lambda: listening.buffer == payload[:15])
 
         assert listening.buffer == payload[:15]
 
     def test_a_request_split_across_two_writes_is_answered(self, listening, client):
         payload = request("ping", request_id="split")
         client.sendall(payload[:15])
-        pump(listening)
+        pump(listening, until=lambda: listening.buffer == payload[:15])
 
         assert exchange(listening, client, payload[15:])[0]["id"] == "split"
 
@@ -230,7 +219,7 @@ class TestRequestCache:
         first = exchange(listening, client, payload)[0]
 
         client.close()
-        pump(listening)
+        pump(listening, until=lambda: listening.client is None)
         again = socket.create_connection(("127.0.0.1", listening.port), timeout=5)
         again.settimeout(0.05)
         try:
@@ -240,10 +229,3 @@ class TestRequestCache:
 
         assert first == second
         assert len(layers_named("c")) == 1
-
-
-def layers_named(name):
-    """Return every project layer that carries this name."""
-    from qgis.core import QgsProject
-
-    return QgsProject.instance().mapLayersByName(name)

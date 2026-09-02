@@ -4,7 +4,7 @@ Each test calls a plugin handler directly. The socket is not involved.
 """
 
 import pytest
-from conftest import add_layer, build_layer
+from conftest import add_layer, build_layer, layers_named
 from qgis.core import (
     QgsCategorizedSymbolRenderer,
     QgsGraduatedSymbolRenderer,
@@ -162,18 +162,18 @@ class TestFilterLayer:
         result = plugin.filter_layer("cities", '"pop" > 500000', "big")
 
         assert result["feature_count"] == 2
-        output = plugin._find_layer_by_name("big")
+        output = layers_named("big")[0]
         assert output.featureCount() == 2
 
     def test_the_output_layer_is_wgs84(self, plugin, cities):
         plugin.filter_layer("cities", '"pop" > 0', "copy")
 
-        assert plugin._find_layer_by_name("copy").crs().authid() == "EPSG:4326"
+        assert layers_named("copy")[0].crs().authid() == "EPSG:4326"
 
     def test_the_output_keeps_the_source_fields(self, plugin, cities):
         plugin.filter_layer("cities", '"pop" > 0', "copy")
 
-        output = plugin._find_layer_by_name("copy")
+        output = layers_named("copy")[0]
         assert [field.name() for field in output.fields()] == ["name", "pop"]
 
     def test_a_broken_expression_is_reported(self, plugin, cities):
@@ -188,7 +188,7 @@ class TestFilterLayer:
         result = plugin.filter_layer("many", '"n" >= 0', "many_copy")
 
         assert result["feature_count"] == count
-        assert plugin._find_layer_by_name("many_copy").featureCount() == count
+        assert layers_named("many_copy")[0].featureCount() == count
 
 
 class TestTraceDownstream:
@@ -214,7 +214,7 @@ class TestTraceDownstream:
     def test_the_output_layer_holds_the_traced_geometry(self, plugin, rivers):
         plugin.trace_downstream("rivers", -72.0, -13.5, output_name="traced")
 
-        output = plugin._find_layer_by_name("traced")
+        output = layers_named("traced")[0]
         assert output.featureCount() == 4
         assert output.crs().authid() == "EPSG:4326"
 
@@ -294,12 +294,12 @@ class TestLayerIdentity:
     def test_remove_layer_accepts_a_name(self, plugin, cities):
         plugin.remove_layer("cities")
 
-        assert QgsProject.instance().mapLayersByName("cities") == []
+        assert layers_named("cities") == []
 
     def test_remove_layer_accepts_an_id(self, plugin, cities):
         plugin.remove_layer(cities.id())
 
-        assert QgsProject.instance().mapLayersByName("cities") == []
+        assert layers_named("cities") == []
 
     def test_get_layer_features_accepts_a_name(self, plugin, cities):
         assert plugin.get_layer_features("cities")["returned_count"] == 5
@@ -324,7 +324,7 @@ class TestLayerIdentity:
         with pytest.raises(Exception) as failure:
             plugin.remove_layer("absent")
 
-        assert "Available names" in str(failure.value)
+        assert "Available layers" in str(failure.value)
         assert "Available ids" in str(failure.value)
 
 
@@ -462,22 +462,14 @@ class TestExecuteCode:
         with pytest.raises(Exception, match="execute_code is disabled"):
             plugin.execute_code("pass")
 
-    def test_the_code_sees_the_project(self, iface):
-        from qgis_mcp_plugin.qgis_mcp_plugin import QgisMCPServer
-
-        server = QgisMCPServer(iface=iface, token="t", allow_execute_code=True)
-
-        result = server.execute_code("print(QgsProject.instance().count())")
+    def test_the_code_sees_the_project(self, plugin_with_code):
+        result = plugin_with_code.execute_code("print(QgsProject.instance().count())")
 
         assert result["executed"] is True
         assert result["stdout"].strip() == "0"
 
-    def test_a_failure_returns_the_traceback(self, iface):
-        from qgis_mcp_plugin.qgis_mcp_plugin import QgisMCPServer
-
-        server = QgisMCPServer(iface=iface, token="t", allow_execute_code=True)
-
-        result = server.execute_code("raise RuntimeError('boom')")
+    def test_a_failure_returns_the_traceback(self, plugin_with_code):
+        result = plugin_with_code.execute_code("raise RuntimeError('boom')")
 
         assert result["executed"] is False
         assert "RuntimeError" in result["traceback"]

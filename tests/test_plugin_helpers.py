@@ -348,3 +348,23 @@ class TestHandlerCoverage:
             if "Unknown command type" in str(result.get("message", "")):
                 missing.append(name)
         assert missing == []
+
+
+class TestVersionsAgree:
+    def test_both_sides_declare_the_same_protocol(self):
+        from qgis_mcp.qgis_mcp_server import PROTOCOL_VERSION as SERVER_PROTOCOL
+
+        assert PROTOCOL_VERSION == SERVER_PROTOCOL
+
+    def test_the_plugin_metadata_matches_the_package_version(self):
+        import configparser
+        import pathlib
+        from importlib.metadata import version
+
+        from qgis_mcp_plugin.qgis_mcp_plugin import PLUGIN_VERSION
+
+        metadata = configparser.ConfigParser()
+        metadata.read(pathlib.Path(__file__).resolve().parents[1] / "qgis_mcp_plugin" / "metadata.txt")
+
+        assert metadata["general"]["version"] == PLUGIN_VERSION
+        assert version("qgis-mcp") == PLUGIN_VERSION
