@@ -88,3 +88,28 @@ jobs:
 
       - name: Run integration tests
         run: /tmp/venv/bin/python -m pytest tests/integration -c tests/integration/pytest.ini -v
+
+  changelog:
+    name: Change fragment
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'no-changelog')
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check that the pull request adds a fragment
+        run: |
+          types="security|added|changed|deprecated|removed|fixed|dependencies|documentation"
+          added=$(git diff --name-only --diff-filter=A \
+            "origin/${{ github.base_ref }}...HEAD" \
+            | grep -E "^changes/[0-9]+\.($types)$" || true)
+          if [ -z "$added" ]; then
+            echo "No change fragment found under changes/."
+            echo "Add one named <issue>.<type>, or apply the no-changelog label."
+            echo "See docs/dev/changelog_fragments.md."
+            exit 1
+          fi
+          echo "Found:"
+          echo "$added"

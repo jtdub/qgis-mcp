@@ -152,6 +152,21 @@ All coordinate I/O uses **WGS84 (EPSG:4326)**. Use `_resolve_layer()` for layer 
 - Update docs if behavior changes.
 - Be cautious when using `execute_code` (it runs arbitrary PyQGIS).
 
+## Changelog Fragments
+
+`docs/admin/release_notes/` is built, not written. Add a file under `changes/`
+named `<issue>.<type>`, and `towncrier build` assembles the notes during a
+release.
+
+```bash
+echo "\`filter_layer\` takes \`output_crs\`. The output used to be WGS84 always." > changes/42.changed
+poetry run towncrier build --version 0.3.0 --draft   # read the result
+```
+
+An internal refactor needs no fragment. Apply the `no-changelog` label instead.
+
+Read [Changelog fragments](docs/dev/changelog_fragments.md) for the rules.
+
 ## Opening a Pull Request
 
 GitHub fills the description from
