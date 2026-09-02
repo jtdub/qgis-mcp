@@ -93,18 +93,19 @@ run has already claimed the current one.
    - starts a new `docs/admin/release_notes/version_X.Y.md` for a new minor
      series, and points towncrier at it;
    - regenerates `poetry.lock`;
+   - runs the lint, the types, and both test suites on the bumped commit, and
+     stops before it pushes anything if one fails;
    - opens a release pull request into `develop`;
    - creates a draft GitHub release for tag `v<version>`.
 
 2. Review the release pull request. Read the built notes as a user would.
 
-    NOTE: The release pull request shows **no CI checks**. GitHub starts no
-    workflow run for a pull request opened with `GITHUB_TOKEN`. Prepare Release
-    runs the lint, the types, and both suites on the bumped commit before it
-    opens the pull request, so a failure stops the release before a pull request
-    exists.
+    The pull request runs the normal CI, and Prepare Release has already run
+    the lint, the types, and both suites on the bumped commit. The two overlap
+    on purpose: Prepare Release checks **before** it pushes anything, so a
+    failure leaves no branch, no pull request, and no draft release behind.
 
-3. Merge it.
+3. Merge it. CI must be green.
 
 ## Publish
 
