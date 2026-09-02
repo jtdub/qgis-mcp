@@ -17,6 +17,7 @@ poetry run pylint src/qgis_mcp/              # static analysis (MCP server only)
 poetry run mypy src/qgis_mcp/                # type check (MCP server only)
 poetry version patch                         # bump the version; poetry owns it
 poetry lock                                  # regenerate poetry.lock
+poetry run towncrier build --version X.Y.Z --draft  # preview the release notes
 ```
 
 ### Linting pipeline order
@@ -62,6 +63,15 @@ Response: `{"id": "<same id>", "protocol": 1, "status": "success", "result": {..
 
 `PROTOCOL_VERSION` lives in both files and must match. Bump it in both when the wire format changes.
 A repeated `id` is answered from the plugin's cache, so a retry never applies a write twice.
+
+## Changelog
+
+Never edit `docs/admin/release_notes/`. Add a fragment to `changes/`, named
+`<issue>.<type>`, where the type is one of `security`, `added`, `changed`,
+`deprecated`, `removed`, `fixed`, `dependencies`, or `documentation`.
+
+One item on one line. At most three items. Write for the operator, not the
+reviewer. `docs/dev/changelog_fragments.md` holds the rules.
 
 ## Adding a New Tool
 

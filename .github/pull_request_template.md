@@ -18,7 +18,7 @@
 ## To Do
 
 - [ ] Explanation of change(s)
-- [ ] `CHANGELOG.md` updated under `## [Unreleased]`
+- [ ] Change fragment added under `changes/`, or the `no-changelog` label applied
 - [ ] Both files changed for a new tool: the plugin handler and the MCP tool
 - [ ] `PROTOCOL_VERSION` bumped in both files, if the wire format changed
 - [ ] `tools.md` and the tool count in `tests/test_tool_annotations.py` updated
