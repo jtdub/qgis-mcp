@@ -8,8 +8,8 @@ This project connects [QGIS](https://qgis.org/) to [Claude AI](https://claude.ai
 1. **Fork the Repository**
    Clone your fork locally:
    ```bash
-   git clone git@github.com:YOUR-USERNAME/qgis_mcp.git
-   cd qgis_mcp
+   git clone git@github.com:YOUR-USERNAME/qgis-mcp.git
+   cd qgis-mcp
    ```
 
 2. **Install Prerequisites**
@@ -60,7 +60,7 @@ This project connects [QGIS](https://qgis.org/) to [Claude AI](https://claude.ai
          "args": [
            "run",
            "--directory",
-           "/ABSOLUTE/PATH/TO/qgis_mcp",
+           "/ABSOLUTE/PATH/TO/qgis-mcp",
            "qgis-mcp"
          ]
        }
@@ -153,5 +153,5 @@ All coordinate I/O uses **WGS84 (EPSG:4326)**. Use `_resolve_layer()` for layer 
 
 ## Reporting Issues
 
-- Use [GitHub Issues](https://github.com/jtdub/qgis_mcp/issues).
+- Use [GitHub Issues](https://github.com/jtdub/qgis-mcp/issues).
 - Include OS, QGIS version, and error logs where relevant.
