@@ -1,0 +1,11 @@
+---
+# Copy this to invoke.yml and change what you need. invoke.yml is ignored by git.
+qgis_mcp:
+  # The tag of the qgis/qgis image the containers build on.
+  qgis_ver: "ltr"
+  # The platform to build for. Set linux/amd64 on an Apple Silicon machine,
+  # because qgis/qgis publishes no arm64 image.
+  platform: "linux/amd64"
+  # Set true to run the tasks on this machine instead of in a container.
+  # local: false
+  # compose_dir: "/full/path/to/qgis-mcp/development"

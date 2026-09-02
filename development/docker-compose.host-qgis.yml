@@ -1,0 +1,15 @@
+---
+# The MCP server alone, pointed at QGIS Desktop on this machine.
+#
+# Start the server from the QGIS MCP dock first, then copy the token from the
+# dock into development/creds.env.
+services:
+  qgis:
+    profiles: ["never"]
+
+  mcp:
+    depends_on: []
+    environment:
+      QGIS_MCP_HOST: host.docker.internal
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

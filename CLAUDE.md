@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Build & Run Commands
 
 ```bash
-poetry install --with dev                    # install dependencies, including dev
+poetry install --extras dev                  # install dependencies, including dev
 poetry run pytest                            # run all tests
 poetry run pytest tests/test_mcp_tools.py::test_ping   # run single test
 poetry run pytest --cov=src/qgis_mcp --cov-report=term-missing  # coverage
@@ -19,6 +19,20 @@ poetry version patch                         # bump the version; poetry owns it
 poetry lock                                  # regenerate poetry.lock
 poetry run towncrier build --version X.Y.Z --draft  # preview the release notes
 ```
+
+### The container environment
+
+`invoke` runs every check against the same QGIS CI uses. `invoke --list` shows
+the tasks; `tasks.py` defines them.
+
+```bash
+invoke build          # build the image
+invoke tests          # lint, types, both suites
+invoke integration    # the QGIS suite only
+invoke cli            # a shell in the container
+```
+
+Set `local: true` in `invoke.yml` to run a task on this machine instead.
 
 ### Linting pipeline order
 1. `ruff check --fix .` — lint + auto-fix (import sorting via isort, pyupgrade, etc.)

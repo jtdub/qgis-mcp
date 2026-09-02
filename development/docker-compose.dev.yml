@@ -1,0 +1,9 @@
+---
+# Mount the checkout, so an edit takes effect without a rebuild.
+services:
+  qgis:
+    volumes:
+      - ..:/work
+  mcp:
+    volumes:
+      - ..:/work
