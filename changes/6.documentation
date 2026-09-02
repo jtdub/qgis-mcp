@@ -1,2 +1,0 @@
-A documentation site replaces `tools.md` and `CONTRIBUTING.md`. It holds a user guide, an administrator guide, and a developer guide.
-The administrator guide covers the token, the `execute_code` gate, the environment variables, upgrading, and the QGIS and Python versions that are supported.

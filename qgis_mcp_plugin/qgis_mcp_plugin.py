@@ -73,7 +73,7 @@ from qgis.utils import active_plugins
 PROTOCOL_VERSION = 1
 """Wire protocol this plugin speaks. The MCP server must send the same number."""
 
-PLUGIN_VERSION = "0.2.0"
+PLUGIN_VERSION = "0.3.0"
 """Version of this plugin, reported to the client by ping."""
 
 

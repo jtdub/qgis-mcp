@@ -1,2 +1,0 @@
-`invoke` drives a Docker development environment. `invoke build` then `invoke tests` runs every check against the same QGIS that CI uses.
-`invoke start` with the host-qgis compose file runs only the MCP server in a container, pointed at QGIS Desktop on your machine.

@@ -1,6 +1,6 @@
 [project]
 name = "qgis-mcp"
-version = "0.2.0"
+version = "0.3.0"
 description = "QGIS integration through the Model Context Protocol — introspection, styling, cartography, and spatial analysis tools"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -144,7 +144,7 @@ ignore_missing_imports = true
 package = "qgis_mcp"
 package_dir = "src"
 directory = "changes"
-filename = "docs/admin/release_notes/version_0.2.md"
+filename = "docs/admin/release_notes/version_0.3.md"
 template = "development/towncrier_template.j2"
 start_string = "<!-- towncrier release notes start -->"
 issue_format = "[#{issue}](https://github.com/jtdub/qgis-mcp/issues/{issue})"
